@@ -5,6 +5,9 @@
 #include <cwchar>
 #include <cstring>
 
+static const wchar_t* kRepoOwner = L"orenandev";
+static const wchar_t* kRepoName = L"PrecisionFix";
+
 std::wstring AppVersion() {
     const char* v = APP_VERSION;
     return std::wstring(v, v + strlen(v));

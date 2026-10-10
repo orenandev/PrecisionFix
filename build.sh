@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compila o PrecisionFix.exe com MinGW-w64 (MSYS2 UCRT64, Git Bash ou o GitHub Actions)
+# Compila o PrecisionFix.exe com MinGW-w64 (MSYS2 UCRT64 ou Git Bash com MinGW no PATH)
 # Uso: ./build.sh [versão]      ex: ./build.sh 1.0.12
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -7,8 +7,14 @@ cd "$(dirname "$0")"
 VERSION="${1:-1.0.0}"
 IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
 mkdir -p build
+cat > build/version.h <<VER
+#define VER_MAJOR $MAJOR
+#define VER_MINOR $MINOR
+#define VER_PATCH $PATCH
+#define VER_STRING "$VERSION"
+VER
 
-windres -I res -DVER_MAJOR="$MAJOR" -DVER_MINOR="$MINOR" -DVER_PATCH="$PATCH" res/app.rc -O coff -o build/app.res.o
+windres -I res -I build res/app.rc -O coff -o build/app.res.o
 
 # substitui o manifesto padrão do MinGW (asInvoker) por um objeto vazio — o nosso pede administrador
 echo "" > build/empty.c

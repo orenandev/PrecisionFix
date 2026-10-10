@@ -7,8 +7,12 @@ set VERSION=%1
 if "%VERSION%"=="" set VERSION=1.0.0
 for /f "tokens=1-3 delims=." %%a in ("%VERSION%") do (set MAJOR=%%a& set MINOR=%%b& set PATCH=%%c)
 if not exist build mkdir build
+> build\version.h echo #define VER_MAJOR %MAJOR%
+>> build\version.h echo #define VER_MINOR %MINOR%
+>> build\version.h echo #define VER_PATCH %PATCH%
+>> build\version.h echo #define VER_STRING "%VERSION%"
 
-windres -I res -DVER_MAJOR=%MAJOR% -DVER_MINOR=%MINOR% -DVER_PATCH=%PATCH% res\app.rc -O coff -o build\app.res.o || goto :fail
+windres -I res -I build res\app.rc -O coff -o build\app.res.o || goto :fail
 
 rem Substitui o manifesto padrao do MinGW (asInvoker) por um objeto vazio
 echo.> build\empty.c

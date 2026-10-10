@@ -27,13 +27,13 @@ static const float CX = SIDE_W + 46, CW = W - (SIDE_W + 46) - 46;
 static const float TITLE_Y = 64;
 static const float VIEW_TOP = 128, VIEW_BOT = H - 10, VIEW_H = VIEW_BOT - VIEW_TOP;
 
-enum { PG_DASH, PG_FIX, PG_KBD, PG_FIVEM, PG_PVP, PG_MIRA, PG_SVC, PG_DISP, PG_CFG, PG_INFO, PG_COUNT };
+enum { PG_DASH, PG_FIX, PG_KBD, PG_FIVEM, PG_PVP, PG_SVC, PG_DISP, PG_CFG, PG_COUNT };
 
 enum {
     ID_MIN = 1, ID_CLOSE = 2,
     ID_NAV = 10,
     ID_MCHECK = 100,      // checkboxes da página do mouse (+n)
-    ID_KCHECK = 130,      // checkboxes do TecladoFix (+n)
+    ID_KCHECK = 130,      // checkboxes do Teclado Fix (+n)
     ID_QUICK = 150,
     ID_FMOPT = 170,       // opções do FiveM (+n)
     ID_SVC = 180,         // serviços (+n)
@@ -43,9 +43,6 @@ enum {
     ID_STEP = 500,        // -/+ dos sliders (+k*2+0/1)
     ID_PVPOPT = 260,      // ajustes de FPS/rede da página PvP (+n)
     ID_TOOL = 270,        // ferramentas do FiveM (+n)
-    ID_XSTYLE = 320,      // estilos de mira (+n)
-    ID_XCOLOR = 330,      // cores de mira (+n)
-    ID_XOUTLINE = 340, ID_XTOGGLE = 341,
     ID_PVP_MODE = 350, ID_PING = 351, ID_PASTE = 352, ID_POLL = 353, ID_UPDATE = 354, ID_REBOOT_PILL = 355,
     ID_RESET_COLOR = 300, ID_REVERT_ALL = 301, ID_ENABLE_ALL = 302, ID_DISABLE_ALL = 303,
     ID_SITE = 304, ID_SITE_SIDE = 305, ID_SITE_BADGE = 306, ID_FIVEM_LAUNCH = 307,
@@ -61,8 +58,7 @@ static const UINT WM_APP_DONE = WM_APP + 1;
 static const UINT WM_APP_UPD_FOUND = WM_APP + 2;   // wp = std::wstring* versão
 static const UINT WM_APP_UPD_READY = WM_APP + 3;   // wp = std::wstring* caminho do .exe novo
 static const UINT WM_APP_UPD_NONE = WM_APP + 4;    // wp = 1 se a verificação falhou
-static const UINT_PTR TIMER_ANIM = 1, TIMER_BOOST = 2, TIMER_XTOP = 3, TIMER_POLL = 4;
-static const int HOTKEY_CROSS = 1;
+static const UINT_PTR TIMER_ANIM = 1, TIMER_BOOST = 2, TIMER_POLL = 4;
 
 struct Theme { Color a, b; };
 static const Theme kThemes[] = {
@@ -115,7 +111,6 @@ static bool g_pollActive = false;               // teste de polling rate em anda
 static std::vector<LONGLONG> g_pollTimes;
 static LONGLONG g_pollStart = 0;
 static int g_pollHz = 0, g_pollLive = 0;
-static void ApplyCross();
 static HANDLE g_mutex = nullptr;
 static void InstallPendingUpdate();
 static bool g_rebootPending = false;    // alguma alteração aplicada precisa de reinício
@@ -468,23 +463,12 @@ static void CodeLabsMark(Graphics& g, float x, float y, float s, const Color& c)
 }
 
 
-static void Crosshair(Graphics& g, float cx, float cy, float s, const Color& c) {
-    Pen p(c, 2.f * s);
-    g.DrawEllipse(&p, cx - 9 * s, cy - 9 * s, 18 * s, 18 * s);
-    g.DrawLine(&p, cx, cy - 14 * s, cx, cy - 6 * s);
-    g.DrawLine(&p, cx, cy + 6 * s, cx, cy + 14 * s);
-    g.DrawLine(&p, cx - 14 * s, cy, cx - 6 * s, cy);
-    g.DrawLine(&p, cx + 6 * s, cy, cx + 14 * s, cy);
-    SolidBrush b(c);
-    g.FillEllipse(&b, cx - 2.2f * s, cy - 2.2f * s, 4.4f * s, 4.4f * s);
-}
-
 
 // ============================================================
 //  Referências: cada checkbox das páginas Mouse/Teclado aponta para um Tweak
 // ============================================================
 struct Ref { int src; int idx; const wchar_t* label; };
-static std::vector<Ref> g_mouseRefs, g_kbdRefs, g_pvpModeRefs;
+static std::vector<Ref> g_mouseRefs, g_kbdRefs;
 
 static Tweak& RefTweak(const Ref& r) {
     switch (r.src) {
@@ -531,31 +515,13 @@ static void BuildRefs() {
     const wchar_t* kl[] = {L"PERFIL DE PRECISÃO", L"FILTER KEYS OFF", L"ATRASO MÍNIMO", L"REPETIÇÃO MÁXIMA",
                            L"PRIORIDADE EM JOGO", L"AJUSTES DE REGISTRO", L"USB SELETIVA OFF", L"STICKY/TOGGLE OFF"};
     for (int i = 0; i < g_kbdCount && i < 8; ++i) g_kbdRefs.push_back({SRC_KBD, i, kl[i]});
-
-    // Modo PvP: tudo que mais pesa na trocação, em um clique
-    struct { int src; const wchar_t* name; const wchar_t* label; } pvp[] = {
-        {SRC_QUICK, L"Precisão do Mouse (1:1)", L"Mouse 1:1"},
-        {SRC_QUICK, L"Redução de Latência",     L"Rede TCP"},
-        {SRC_QUICK, L"Performance Máxima",      L"Energia máx."},
-        {SRC_TWEAK, L"Tracking",                L"Tracking"},
-        {SRC_TWEAK, L"0.5ms",                   L"Timer 0.5ms"},
-        {SRC_TWEAK, L"Registros Mouse",         L"Fila do mouse"},
-        {SRC_TWEAK, L"Flags",                   L"GPU p/ jogos"},
-        {SRC_TWEAK, L"Boost Fivem",             L"Boost FiveM"},
-    };
-    for (auto& m : pvp) {
-        int i = m.src == SRC_QUICK ? FindQuick(m.name) : FindTweak(m.name);
-        if (i >= 0) g_pvpModeRefs.push_back({m.src, i, m.label});
-    }
-    g_pvpModeRefs.push_back({SRC_KBD, 4, L"Prioridade em jogo"});
-    g_pvpModeRefs.push_back({SRC_PVP, 0, L"Game DVR off"});
 }
 
 // ============================================================
 //  Ícones da barra lateral (vetor)
 // ============================================================
 static const wchar_t* kPageNames[PG_COUNT] = {
-    L"Dashboard", L"Precision Fix", L"TecladoFix", L"FiveM", L"PvP", L"Mira", L"Serviços", L"Display", L"Configurações", L"Informações"};
+    L"Dashboard", L"Precision Fix", L"Teclado Fix", L"FiveM", L"PvP", L"Serviços", L"Display", L"Configurações"};
 
 static void FiveMGlyph(Graphics& g, float cx, float cy, float s, const Color& c) {
     // "Λ" estilizado com corte interno
@@ -605,13 +571,6 @@ static void NavIcon(Graphics& g, int which, float cx, float cy, const Color& c) 
         g.DrawLine(&p, cx - 3, cy + 7, cx - 7, cy + 3);
         break;
     }
-    case PG_MIRA:
-        g.DrawEllipse(&p, cx - 6.5f, cy - 6.5f, 13.f, 13.f);
-        g.DrawLine(&p, cx, cy - 9, cx, cy - 4);
-        g.DrawLine(&p, cx, cy + 4, cx, cy + 9);
-        g.DrawLine(&p, cx - 9, cy, cx - 4, cy);
-        g.DrawLine(&p, cx + 4, cy, cx + 9, cy);
-        break;
     case PG_SVC:
         for (int i = 0; i < 9; ++i) g.FillRectangle(&b, cx - 7 + (i % 3) * 5.2f, cy - 7 + (i / 3) * 5.2f, 3.6f, 3.6f);
         break;
@@ -634,11 +593,6 @@ static void NavIcon(Graphics& g, int which, float cx, float cy, const Color& c) 
         g.DrawEllipse(&p, cx - 2.6f, cy - 2.6f, 5.2f, 5.2f);
         break;
     }
-    case PG_INFO:
-        g.DrawEllipse(&p, cx - 8, cy - 8, 16.f, 16.f);
-        g.DrawLine(&p, cx, cy - 0.5f, cx, cy + 4);
-        g.FillEllipse(&b, cx - 1.1f, cy - 4.6f, 2.2f, 2.2f);
-        break;
     }
 }
 
@@ -930,7 +884,7 @@ static void CheckRow(Graphics& g, float edgeX, float cy, bool labelLeft, const R
 
 // Caixa de descrição do item sob o mouse (Mouse/Teclado)
 static void DescribeBox(Graphics& g, float y, const std::vector<Ref>& refs, int baseId) {
-    RectF r(CX, y, CW, 78);
+    RectF r(CX, y, CW, 96);
     FillRound(g, r, 16, cCard);
     StrokeRound(g, r, 16, cBorder);
     int hov = -1;
@@ -951,7 +905,8 @@ static void DescribeBox(Graphics& g, float y, const std::vector<Ref>& refs, int 
         StrokeRound(g, tr, 8.5f, Color(255, 46, 46, 52));
         Spaced(g, tag, fTag, cSub, tr.X + 7, tr.Y + 3, 0.8f);
     }
-    TextBox(g, std::wstring(t.desc) + L"  ·  " + t.tech, fDesc, cSub, RectF(r.X + 24, r.Y + 44, r.Width - 48, 22), false);
+    TextBox(g, t.desc, fDesc, cSub, RectF(r.X + 24, r.Y + 44, r.Width - 48, 22), false);
+    Text(g, std::wstring(L"O que muda: ") + t.tech, fSmall, cMuted, r.X + 24, r.Y + 68);
 }
 
 static void PageSubtitle(Graphics& g, const wchar_t* s, float slide) {
@@ -985,23 +940,7 @@ static float PageDashboard(Graphics& g, float y) {
     y += th + 14;
     Tile(g, RectF(CX, y, tw, th), ID_CARD + 5, L"SISTEMA", g_sys.os, g_sys.osDetail);
     Tile(g, RectF(CX + tw + 14, y, tw, th), ID_CARD + 6, L"PLACA-MÃE", g_sys.board, L"Placa-mãe");
-    y += th + 30;
-
-    SectionHeader(g, L"OTIMIZAÇÃO RÁPIDA", y);
-    y += 30;
-    for (int i = 0; i < g_quickCount; ++i) {
-        RectF r(CX, y, CW, 108);
-        if (Offscreen(r)) { y += 108 + 16; continue; }
-        CardBg(g, r, ID_CARD + 20 + i);
-        Text(g, g_quick[i].name, fCardT, cText, r.X + 26, r.Y + 28);
-        TextBox(g, g_quick[i].desc, fDesc, cSub, RectF(r.X + 26, r.Y + 57, r.Width - 26 - 200, 40));
-        bool busyMe = BusyFor(SRC_QUICK, i);
-        bool on = g_qk[i].on;
-        RectF br(r.X + r.Width - 26 - 148, r.Y + (r.Height - 46) / 2, 148, 46);
-        const wchar_t* label = busyMe ? L"Aguarde..." : on ? (Hov(ID_QUICK + i) > 0.5f ? L"Desfazer" : L"Aplicado") : L"Aplicar";
-        Button(g, br, label, ID_QUICK + i, on ? BTN_APPLIED : BTN_ACCENT, !g_busy, !on && !busyMe);
-        y += 108 + 16;
-    }
+    y += th + 10;
     return y;
 }
 
@@ -1021,7 +960,7 @@ static float PageMouse(Graphics& g, float y) {
     }
     y = top + MOUSE_H + 18;
     DescribeBox(g, y, g_mouseRefs, ID_MCHECK);
-    return y + 78 + 10;
+    return y + 96 + 10;
 }
 
 static void KbdArtFn(Graphics& g, const Color&) { DrawKeyboardArt(g); }
@@ -1039,7 +978,7 @@ static float PageKeyboard(Graphics& g, float y) {
     }
     y = top + rowsH + 34;
     DescribeBox(g, y, g_kbdRefs, ID_KCHECK);
-    return y + 78 + 10;
+    return y + 96 + 10;
 }
 
 static float PageFiveM(Graphics& g, float y) {
@@ -1107,19 +1046,19 @@ static float PageFiveM(Graphics& g, float y) {
 
 static float PageServices(Graphics& g, float y) {
     RectF n(CX, y, CW, 52);
-    FillRound(g, n, 14, Color(255, 24, 20, 10));
-    StrokeRound(g, n, 14, Color(90, 251, 191, 36));
-    SolidBrush wd(cWarn);
+    FillRound(g, n, 14, cCard);
+    StrokeRound(g, n, 14, cBorder);
+    SolidBrush wd(Acc());
     g.FillEllipse(&wd, n.X + 20, n.Y + 22, 8.f, 8.f);
-    TextBox(g, L"Desativar serviços para e bloqueia o início deles. Reative aqui mesmo quando quiser.",
-            fDesc, Color(255, 230, 200, 140), RectF(n.X + 40, n.Y, n.Width - 60, n.Height), false, StringAlignmentNear, StringAlignmentCenter);
+    TextBox(g, L"Veja quais serviços do Windows estão ativos e reative os que estiverem parados ou desativados.",
+            fDesc, cSub, RectF(n.X + 40, n.Y, n.Width - 60, n.Height), false, StringAlignmentNear, StringAlignmentCenter);
     y += 52 + 18;
     for (int i = 0; i < g_serviceCount; ++i) {
         RectF r(CX, y, CW, 70);
         if (Offscreen(r)) { y += 70 + 12; continue; }
         int st = i < (int)g_svcState.size() ? g_svcState[i] : SVC_MISSING;
         bool missing = st == SVC_MISSING;
-        CardBg(g, r, ID_SVC + i, !g_busy && !missing);
+        CardBg(g, r, ID_CARD + 120 + i);
         wchar_t nm[96];
         swprintf(nm, 96, L"[ %d. %ls ]", i + 1, g_services[i].name);
         Text(g, nm, fMono, cText, r.X + 22, r.Y + 15);
@@ -1128,14 +1067,17 @@ static float PageServices(Graphics& g, float y) {
         const wchar_t* label = st == SVC_RUNNING ? L"RUNNING" : st == SVC_STOPPED ? L"STOPPED" : st == SVC_DISABLED ? L"DISABLED" : L"AUSENTE";
         Color bc = st == SVC_RUNNING ? Color(255, 74, 222, 128) : st == SVC_DISABLED ? Color(255, 248, 113, 113) : cSub;
         float bw = SpacedW(g, label, fTag, 1.f) + 22;
-        RectF badge(r.X + r.Width - 22 - 50 - 18 - bw, r.Y + (r.Height - 22) / 2, bw, 22);
+        float right = st == SVC_RUNNING ? 50.f : 96.f;
+        RectF badge(r.X + r.Width - 22 - right - 18 - bw, r.Y + (r.Height - 22) / 2, bw, 22);
         FillRound(g, badge, 5, Alpha(bc, 0.10f));
         StrokeRound(g, badge, 5, Alpha(bc, 0.35f));
         Spaced(g, label, fTag, bc, badge.X + 11, badge.Y + 5.5f, 1.f);
 
         bool busyMe = g_busy && ((g_busyKind == JOB_SVC && g_busyIdx == i) || g_busyKind == JOB_REVERT);
-        if (!missing) DrawToggle(g, RectF(r.X + r.Width - 22 - 50, r.Y + (r.Height - 26) / 2, 50, 26),
-                                 st == SVC_DISABLED ? 0.f : 1.f, busyMe);
+        RectF act(r.X + r.Width - 22 - 50, r.Y + (r.Height - 26) / 2, 50, 26);
+        if (st == SVC_RUNNING) DrawToggle(g, act, 1.f, false);   // ativo: só mostra (não dá para desativar)
+        else if (!missing) Button(g, RectF(r.X + r.Width - 22 - 96, r.Y + (r.Height - 38) / 2, 96, 38), busyMe ? L"..." : L"Ativar",
+                                  ID_SVC + i, BTN_ACCENT, !g_busy);
         y += 70 + 12;
     }
     return y;
@@ -1151,33 +1093,17 @@ static const Preset kPresets[] = {
     {L"Competitivo", L"Máximo de visibilidade e contraste.",                   70, 6800, 115},
 };
 static const int kPresetCount = sizeof(kPresets) / sizeof(kPresets[0]);
-
-
-
-// --- Sliders (0-2 = Display, 3-5 = Mira)
+// --- Sliders do Display
 struct SliderDef { const wchar_t* name; int lo, hi, step; };
-static const SliderDef kSliders[6] = {
-    {L"Saturação", 0, 100, 1}, {L"Temperatura", 3000, 9000, 100}, {L"Gama", 50, 200, 5},
-    {L"Tamanho", 2, 30, 1},    {L"Espessura", 1, 6, 1},           {L"Abertura", 0, 12, 1},
-};
-static RectF g_sliderTrack[6];
+static const SliderDef kSliders[3] = {{L"Saturação", 0, 100, 1}, {L"Temperatura", 3000, 9000, 100}, {L"Gama", 50, 200, 5}};
+static RectF g_sliderTrack[3];
 
-static int* SliderVal(int k) {
-    switch (k) {
-        case 0: return &g_disp.saturation;
-        case 1: return &g_disp.temperature;
-        case 2: return &g_disp.gamma100;
-        case 3: return &g_cross.size;
-        case 4: return &g_cross.thick;
-        default: return &g_cross.gap;
-    }
-}
+static int* SliderVal(int k) { return k == 0 ? &g_disp.saturation : k == 1 ? &g_disp.temperature : &g_disp.gamma100; }
 static std::wstring SliderText(int k) {
     wchar_t b[32];
     if (k == 0) swprintf(b, 32, L"%d %%", g_disp.saturation);
     else if (k == 1) swprintf(b, 32, L"%d K", g_disp.temperature);
-    else if (k == 2) swprintf(b, 32, L"%.2f", g_disp.gamma100 / 100.f);
-    else swprintf(b, 32, L"%d px", *SliderVal(k));
+    else swprintf(b, 32, L"%.2f", g_disp.gamma100 / 100.f);
     return b;
 }
 
@@ -1245,41 +1171,7 @@ static float PageDisplay(Graphics& g, float y) {
 }
 
 // --- PvP
-static bool PvpModeOn() {
-    for (auto& r : g_pvpModeRefs) if (!RefState(r).on) return false;
-    return !g_pvpModeRefs.empty();
-}
-
-static void Chip(Graphics& g, float& x, float y, const wchar_t* text, bool on) {
-    float w = TextW(g, text, fSmall) + (on ? 34 : 20);
-    RectF r(x, y, w, 24);
-    FillRound(g, r, 12, on ? Acc(0.10f) : Color(255, 20, 20, 23));
-    StrokeRound(g, r, 12, on ? Acc(0.45f) : Color(255, 40, 40, 45));
-    if (on) Check(g, r.X + 9, r.Y + 12, Acc());
-    Text(g, text, fSmall, on ? cText : cSub, r.X + (on ? 25 : 10), r.Y + 4.5f);
-    x += w + 8;
-}
-
 static float PagePvP(Graphics& g, float y) {
-    // Modo PvP
-    bool on = PvpModeOn();
-    RectF r(CX, y, CW, 170);
-    CardBg(g, r, ID_CARD + 90);
-    if (on) StrokeRound(g, r, 16, Acc(0.6f), 1.2f);
-    Text(g, L"Modo PvP", fBig, cText, r.X + 26, r.Y + 22);
-    TextBox(g, L"Um clique e o PC fica no ponto para trocação: mouse 1:1, latência mínima e prioridade total para o FiveM.",
-            fDesc, cSub, RectF(r.X + 26, r.Y + 56, r.Width - 26 - 220, 40));
-    bool busyMe = g_busy && g_busyKind == JOB_ALL_REFS;
-    const wchar_t* label = busyMe ? L"Aplicando..." : on ? (Hov(ID_PVP_MODE) > 0.5f ? L"Desativar" : L"Modo PvP ativo") : L"Ativar Modo PvP";
-    Button(g, RectF(r.X + r.Width - 26 - 190, r.Y + 30, 190, 48), label, ID_PVP_MODE, on ? BTN_APPLIED : BTN_ACCENT, !g_busy, !on && !busyMe);
-    float cx = r.X + 26, cy = r.Y + 104;
-    for (size_t i = 0; i < g_pvpModeRefs.size(); ++i) {
-        float w = TextW(g, g_pvpModeRefs[i].label, fSmall) + 34;
-        if (cx + w > r.X + r.Width - 26) { cx = r.X + 26; cy += 30; }
-        Chip(g, cx, cy, g_pvpModeRefs[i].label, RefState(g_pvpModeRefs[i]).on);
-    }
-    y += 170 + 18;
-
     // Conexão + polling lado a lado
     float hw = (CW - 16) / 2, hh = 236;
     RectF c1(CX, y, hw, hh);
@@ -1352,87 +1244,12 @@ static float PagePvP(Graphics& g, float y) {
     return y;
 }
 
-// --- Mira
-static float PageMira(Graphics& g, float y) {
-    // prévia
-    float pv = 300;
-    RectF prev(CX, y, pv, pv);
-    LinearGradientBrush pb(PointF(0, prev.Y), PointF(0, prev.Y + pv), Color(255, 46, 52, 58), Color(255, 18, 20, 23));
-    FillRound(g, prev, 16, pb);
-    {   // "cenário" simples para ver o contraste da mira
-        GraphicsState st = g.Save();
-        GraphicsPath clip;
-        RoundRect(clip, prev, 16);
-        g.SetClip(&clip, CombineModeIntersect);
-        SolidBrush ground(Color(255, 30, 28, 26));
-        g.FillRectangle(&ground, prev.X, prev.Y + pv * 0.62f, pv, pv * 0.38f);
-        SolidBrush wall(Color(255, 70, 66, 60));
-        g.FillRectangle(&wall, prev.X + 40, prev.Y + 90, 90.f, 110.f);
-        SolidBrush wall2(Color(255, 120, 130, 140));
-        g.FillRectangle(&wall2, prev.X + 180, prev.Y + 60, 70.f, 140.f);
-        g.Restore(st);
-    }
-    StrokeRound(g, prev, 16, cBorder);
-    DrawCrosshair(g, (float)(int)(prev.X + pv / 2), (float)(int)(prev.Y + pv / 2), g_cross);
-    Text(g, L"PRÉVIA", fTag, cMuted, prev.X + 14, prev.Y + 12);
-
-    // opções
-    float ox = CX + pv + 24, ow = CW - pv - 24;
-    Text(g, L"Estilo", fRow, cText, ox, y + 2);
-    const wchar_t* styles[XS_COUNT] = {L"Ponto", L"Cruz", L"Cruz + Ponto", L"Círculo"};
-    float sx = ox, sy = y + 30;
-    float sw = (ow - 3 * 8) / 4;
-    for (int i = 0; i < XS_COUNT; ++i) {
-        RectF b(sx + i * (sw + 8), sy, sw, 36);
-        AddHit(ID_XSTYLE + i, b, true);
-        float h = Hov(ID_XSTYLE + i);
-        bool sel = g_cross.style == i;
-        FillRound(g, b, 10, sel ? Acc(0.14f) : Mix(Color(255, 16, 16, 19), Color(255, 26, 26, 30), h));
-        StrokeRound(g, b, 10, sel ? Acc(0.7f) : Mix(cBorder, Color(255, 82, 82, 91), h));
-        TextBox(g, styles[i], fSmall, sel ? cText : cSub, b, false, StringAlignmentCenter, StringAlignmentCenter);
-    }
-    Text(g, L"Cor", fRow, cText, ox, y + 84);
-    for (int i = 0; i < kCrossColorCount; ++i) {
-        float cx = ox + 15 + i * 40.f, cy = y + 128;
-        AddHit(ID_XCOLOR + i, RectF(cx - 16, cy - 16, 32, 32), true);
-        float h = Hov(ID_XCOLOR + i);
-        unsigned rgb = kCrossColors[i];
-        float rad = 13 + h * 2;
-        if (g_cross.color == i) {
-            Pen ring(Color(230, 255, 255, 255), 2.f);
-            g.DrawEllipse(&ring, cx - rad - 4, cy - rad - 4, (rad + 4) * 2, (rad + 4) * 2);
-        }
-        SolidBrush b(Color(255, (BYTE)(rgb >> 16), (BYTE)(rgb >> 8), (BYTE)rgb));
-        g.FillEllipse(&b, cx - rad, cy - rad, rad * 2, rad * 2);
-    }
-    // contorno
-    RectF ob(ox, y + 166, 22, 22);
-    AddHit(ID_XOUTLINE, RectF(ob.X - 4, ob.Y - 6, 200, 34), true);
-    CheckBox(g, ob, g_cross.outline ? 1.f : 0.f, Hov(ID_XOUTLINE), false);
-    Text(g, L"Contorno preto", fRow, cText, ob.X + 34, ob.Y + 2);
-    y += pv + 22;
-
-    RectF card(CX, y, CW, 3 * 84.f + 26);
-    FillRound(g, card, 16, cCard);
-    StrokeRound(g, card, 16, cBorder);
-    for (int k = 3; k < 6; ++k) SliderRow(g, k, card.X + 24, card.Y + 22 + (k - 3) * 84.f, card.Width - 48);
-    y += card.Height + 18;
-
-    RectF act(CX, y, CW, 96);
-    CardBg(g, act, ID_CARD + 95);
-    if (g_cross.enabled) StrokeRound(g, act, 16, Acc(0.6f), 1.2f);
-    Text(g, g_cross.enabled ? L"Mira ativa na tela" : L"Mira desativada", fCardT, cText, act.X + 24, act.Y + 22);
-    TextBox(g, L"Atalho Ctrl+F9 liga/desliga mesmo dentro do jogo. Use o FiveM em janela sem borda. Confira se o servidor permite mira externa.",
-            fSmall, cSub, RectF(act.X + 24, act.Y + 50, act.Width - 24 - 210, 36));
-    Button(g, RectF(act.X + act.Width - 24 - 170, act.Y + 25, 170, 46), g_cross.enabled ? L"Desativar mira" : L"Ativar mira",
-           ID_XTOGGLE, g_cross.enabled ? BTN_GHOST : BTN_ACCENT, true, !g_cross.enabled);
-    return y + 96 + 10;
-}
 static float PageConfig(Graphics& g, float y) {
     RectF r(CX, y, CW, 192);
     CardBg(g, r, ID_CARD + 40);
     Text(g, L"Personalização de Cor", fCardT, cText, r.X + 26, r.Y + 26);
     TextBox(g, L"Escolha a cor de destaque do seu painel para um visual único.", fDesc, cSub, RectF(r.X + 26, r.Y + 55, 340, 40));
+    Button(g, RectF(r.X + r.Width - 26 - 120, r.Y + 24, 120, 40), L"Resetar", ID_RESET_COLOR, BTN_GHOST);
     RectF sw(r.X + 26, r.Y + 112, 58, 52);
     Glow(g, sw, 4, Acc(), 0.8f, 3);
     LinearGradientBrush swb(PointF(sw.X, sw.Y), PointF(sw.X + sw.Width, sw.Y + sw.Height), Acc(), Mix(Acc(), Acc2(), 0.35f));
@@ -1451,11 +1268,14 @@ static float PageConfig(Graphics& g, float y) {
     }
     y += 192 + 18;
 
+    // Versão + atualização (o app também verifica sozinho ao abrir)
     r = RectF(CX, y, CW, 104);
     CardBg(g, r, ID_CARD + 41);
-    Text(g, L"Resetar Padrões", fCardT, cText, r.X + 26, r.Y + 28);
-    TextBox(g, L"Volta as cores originais do aplicativo.", fDesc, cSub, RectF(r.X + 26, r.Y + 57, r.Width - 230, 40));
-    Button(g, RectF(r.X + r.Width - 26 - 140, r.Y + (r.Height - 46) / 2, 140, 46), L"Resetar", ID_RESET_COLOR, BTN_GHOST);
+    Text(g, L"Versão " + AppVersion(), fCardT, cText, r.X + 26, r.Y + 28);
+    TextBox(g, L"O app se atualiza sozinho pelo GitHub sempre que sai uma versão nova.", fDesc, cSub,
+            RectF(r.X + 26, r.Y + 57, r.Width - 260, 40));
+    Button(g, RectF(r.X + r.Width - 26 - 200, r.Y + (r.Height - 46) / 2, 200, 46), g_updChecking ? L"Verificando..." : L"Verificar atualização",
+           ID_UPDATE, BTN_GHOST, !g_updChecking);
     y += 104 + 18;
 
     r = RectF(CX, y, CW, 104);
@@ -1466,73 +1286,6 @@ static float PageConfig(Graphics& g, float y) {
     Button(g, RectF(r.X + r.Width - 26 - 150, r.Y + (r.Height - 46) / 2, 150, 46), L"Reverter tudo", ID_REVERT_ALL, BTN_DANGER, !g_busy);
     y += 104 + 18;
     return y;
-}
-
-static float PageInfo(Graphics& g, float y) {
-    RectF r(CX, y, CW, 128);
-    CardBg(g, r, ID_CARD + 60);
-    Crosshair(g, r.X + 52, r.Y + 52, 1.35f, Acc());
-    float x = Spaced(g, L"PRECISION", fBig, cText, r.X + 96, r.Y + 28, 1.5f);
-    Spaced(g, L"FIX", fBig, Acc(), x + 10, r.Y + 28, 1.5f);
-    TextBox(g, L"Otimizador de entrada e latência para Windows. Todas as alterações podem ser desfeitas pelo próprio app.",
-            fDesc, cSub, RectF(r.X + 96, r.Y + 60, r.Width - 96 - 240, 44));
-    Text(g, L"Versão " + AppVersion() + L"  ·  atualiza sozinho pelo GitHub", fSmall, cMuted, r.X + 96, r.Y + 100);
-    Button(g, RectF(r.X + r.Width - 24 - 200, r.Y + 41, 200, 42), g_updChecking ? L"Verificando..." : L"Verificar atualização",
-           ID_UPDATE, BTN_GHOST, !g_updChecking);
-    y += 128 + 18;
-
-    r = RectF(CX, y, CW, 112);
-    CardBg(g, r, ID_CARD + 63);
-    CodeLabsMark(g, r.X + 28, r.Y + 30, 1.5f, cText);
-    Text(g, L"Desenvolvido pela CodeLabs", fCardT, cText, r.X + 78, r.Y + 27);
-    TextBox(g, L"Bots, aplicações e sistemas sob medida, com qualidade de estúdio.", fDesc, cSub,
-            RectF(r.X + 78, r.Y + 56, r.Width - 78 - 200, 40));
-    Button(g, RectF(r.X + r.Width - 24 - 160, r.Y + (r.Height - 46) / 2, 160, 46), L"Visitar site", ID_SITE, BTN_ACCENT, true, true);
-    y += 112 + 18;
-
-    SectionHeader(g, L"MÓDULOS", y);
-    y += 30;
-    float rowH = 36;
-    int total = g_tweakCount + g_quickCount + g_kbdCount + g_pvpCount;
-    r = RectF(CX, y, CW, 20 + rowH * total);
-    FillRound(g, r, 16, cCard);
-    StrokeRound(g, r, 16, cBorder);
-    float ry = r.Y + 10;
-    SolidBrush sep(Color(255, 26, 26, 30));
-    auto row = [&](const Tweak& t, bool on, bool last) {
-        RectF rr(r.X, ry, r.Width, rowH);
-        if (!Offscreen(rr)) {
-            SolidBrush dot(on ? Acc() : Color(255, 54, 54, 60));
-            g.FillEllipse(&dot, r.X + 24, ry + rowH / 2 - 3.5f, 7.f, 7.f);
-            TextBox(g, t.name, fRow, cText, RectF(r.X + 42, ry, 230, rowH), false, StringAlignmentNear, StringAlignmentCenter);
-            TextBox(g, t.tech, fSmall, cSub, RectF(r.X + 280, ry, r.Width - 300, rowH), false, StringAlignmentNear, StringAlignmentCenter);
-        }
-        ry += rowH;
-        if (!last) g.FillRectangle(&sep, r.X + 20, ry, r.Width - 40, 1.f);
-    };
-    for (int i = 0; i < g_tweakCount; ++i) row(g_tweaks[i], g_tw[i].on, false);
-    for (int i = 0; i < g_quickCount; ++i) row(g_quick[i], g_qk[i].on, false);
-    for (int i = 0; i < g_kbdCount; ++i) row(g_kbd[i], g_kb[i].on, false);
-    for (int i = 0; i < g_pvpCount; ++i) row(g_pvp[i], g_pv[i].on, i == g_pvpCount - 1);
-    y += r.Height + 30;
-
-    SectionHeader(g, L"OBSERVAÇÕES", y);
-    y += 30;
-    const wchar_t* notes[] = {
-        L"O app precisa rodar como administrador para alterar o registro, serviços e o bcdedit.",
-        L"Itens marcados com REINÍCIO só fazem efeito completo após reiniciar o PC.",
-        L"Use \"Reverter tudo\" em Configurações para voltar aos padrões do Windows.",
-    };
-    r = RectF(CX, y, CW, 20 + 34.f * 3);
-    FillRound(g, r, 16, cCard);
-    StrokeRound(g, r, 16, cBorder);
-    for (int i = 0; i < 3; ++i) {
-        float ny = r.Y + 10 + i * 34.f;
-        SolidBrush b(Acc());
-        g.FillEllipse(&b, r.X + 25, ny + 14, 5.f, 5.f);
-        TextBox(g, notes[i], fDesc, cSub, RectF(r.X + 42, ny, r.Width - 62, 34), false, StringAlignmentNear, StringAlignmentCenter);
-    }
-    return y + r.Height + 10;
 }
 
 static void DrawToast(Graphics& g) {
@@ -1641,12 +1394,10 @@ static const wchar_t* PageSub(int p) {
         case PG_FIX:   return L"Configuração avançada de precisão e resposta (Tracking/Flick)";
         case PG_KBD:   return L"Resposta, repetição e atalhos do teclado";
         case PG_FIVEM: return L"Prepara o PC, limpa o cache e abre o jogo";
-        case PG_PVP:   return L"Tudo para trocação: modo PvP, conexão e polling rate";
-        case PG_MIRA:  return L"Mira sobreposta à tela · atalho Ctrl+F9";
+        case PG_PVP:   return L"Conexão, polling rate e ajustes de FPS e rede";
         case PG_SVC:   return L"Gerenciamento de serviços do sistema";
         case PG_DISP:  return L"Otimizações de vídeo e monitor";
         case PG_CFG:   return L"Aparência e restauração";
-        case PG_INFO:  return L"Sobre o app e o que cada módulo faz";
     }
     return nullptr;
 }
@@ -1695,9 +1446,8 @@ static void Paint(HDC hdc, int pw, int ph) {
             swprintf(buf, 48, L"%d de %d ativos", on, (int)refs.size());
             float bw = 150;
             Button(g, RectF(CX + CW - bw, TITLE_Y + slide - 2, bw, 40), L"Desativar tudo", ID_DISABLE_ALL, BTN_GHOST, !g_busy);
-            Button(g, RectF(CX + CW - bw * 2 - 12, TITLE_Y + slide - 2, bw, 40), L"Ativar tudo", ID_ENABLE_ALL, BTN_ACCENT, !g_busy, true);
             float cw = TextW(g, buf, fSmall);
-            Text(g, buf, fSmall, cMuted, CX + CW - bw * 2 - 12 - 16 - cw, TITLE_Y + slide + 10);
+            Text(g, buf, fSmall, cMuted, CX + CW - bw - 16 - cw, TITLE_Y + slide + 10);
         }
 
         g_clipR = RectF(SIDE_W + 1, VIEW_TOP - 8, W - SIDE_W - 1, VIEW_BOT - VIEW_TOP + 8);
@@ -1713,9 +1463,7 @@ static void Paint(HDC hdc, int pw, int ph) {
             case PG_SVC:   y1 = PageServices(g, y0); break;
             case PG_DISP:  y1 = PageDisplay(g, y0); break;
             case PG_PVP:   y1 = PagePvP(g, y0); break;
-            case PG_MIRA:  y1 = PageMira(g, y0); break;
             case PG_CFG:   y1 = PageConfig(g, y0); break;
-            case PG_INFO:  y1 = PageInfo(g, y0); break;
         }
         g_contentH[g_page] = y1 - y0 + 16;
         g_clip = false;
@@ -1861,17 +1609,13 @@ static void OnJobDone(Job* j, bool ok) {
         break;
     }
     case JOB_ALL_REFS:
-        if (j->refs == &g_pvpModeRefs) msg = j->on ? L"Modo PvP ativado" : L"Modo PvP desativado";
-        else msg = j->on ? L"Todas as opções ativadas" : L"Todas as opções desativadas";
+        msg = j->on ? L"Todas as opções ativadas" : L"Todas as opções desativadas";
         reboot = true;
         break;
     case JOB_REVERT:
         msg = L"Padrões do Windows restaurados";
         reboot = true;
         g_disp = {50, 6500, 100};
-        g_cross.enabled = 0;
-        CrossSave();
-        ApplyCross();
         DisplayApply();
         DisplaySave();
         RefreshServices();
@@ -1906,20 +1650,9 @@ static void ApplyDisplayNow(bool save) {
     if (save) DisplaySave();
 }
 
-static void ApplyCross() {
-    CrossApply(g_inst);
-    if (g_cross.enabled) SetTimer(g_hwnd, TIMER_XTOP, 2000, nullptr);   // garante que fica por cima do jogo
-    else KillTimer(g_hwnd, TIMER_XTOP);
-}
-
 // final = soltou o mouse / clicou no -/+ (salva). Display limitado a ~25 aplicações/s durante o arraste.
 static void SliderChanged(int k, bool final) {
-    if (k < 3) {
-        if (final || GetTickCount64() - g_lastDispApply > 40) ApplyDisplayNow(final);
-    } else {
-        if (g_cross.enabled) ApplyCross();
-        if (final) CrossSave();
-    }
+    if (final || GetTickCount64() - g_lastDispApply > 40) ApplyDisplayNow(final);
     StartAnim();
 }
 
@@ -2095,22 +1828,11 @@ static void OnClick(int id) {
         Toast(std::wstring(L"Preset ") + p.name + L" aplicado", 1);
         return;
     }
-    if (id >= ID_STEP && id < ID_STEP + 12) {
+    if (id >= ID_STEP && id < ID_STEP + 6) {
         int k = (id - ID_STEP) / 2, dir = (id - ID_STEP) % 2 ? 1 : -1;
         int v = *SliderVal(k) + dir * kSliders[k].step;
         *SliderVal(k) = (std::max)(kSliders[k].lo, (std::min)(kSliders[k].hi, v));
         SliderChanged(k, true);
-        return;
-    }
-    // Mira (instantâneo)
-    if (id >= ID_XSTYLE && id < ID_XSTYLE + XS_COUNT) { g_cross.style = id - ID_XSTYLE; CrossSave(); ApplyCross(); return; }
-    if (id >= ID_XCOLOR && id < ID_XCOLOR + kCrossColorCount) { g_cross.color = id - ID_XCOLOR; CrossSave(); ApplyCross(); return; }
-    if (id == ID_XOUTLINE) { g_cross.outline = !g_cross.outline; CrossSave(); ApplyCross(); return; }
-    if (id == ID_XTOGGLE) {
-        g_cross.enabled = !g_cross.enabled;
-        CrossSave();
-        ApplyCross();
-        Toast(g_cross.enabled ? L"Mira ativada · Ctrl+F9 liga/desliga" : L"Mira desativada", 1);
         return;
     }
     // PvP: teste de polling e servidor
@@ -2165,11 +1887,10 @@ static void OnClick(int id) {
     }
     if (id >= ID_SVC && id < ID_SVC + g_serviceCount) {
         int i = id - ID_SVC;
-        RunJob(new Job{JOB_SVC, 0, i, g_svcState[i] == SVC_DISABLED, nullptr, false, L""});
+        if (g_svcState[i] != SVC_RUNNING) RunJob(new Job{JOB_SVC, 0, i, true, nullptr, false, L""});   // só reativa
         return;
     }
     if (id >= ID_TOOL && id < ID_TOOL + TOOL_COUNT) { RunJob(new Job{JOB_TOOL, 0, id - ID_TOOL, true, nullptr, false, L""}); return; }
-    if (id == ID_PVP_MODE) { RunJob(new Job{JOB_ALL_REFS, 0, -1, !PvpModeOn(), &g_pvpModeRefs, false, L""}); return; }
     if (id == ID_PING) {
         Job* j = new Job{JOB_PING, 0, -1, true, nullptr, false, L""};
         j->ping = PingTargets();
@@ -2178,7 +1899,6 @@ static void OnClick(int id) {
         return;
     }
     if (id == ID_FIVEM_LAUNCH) { RunJob(new Job{JOB_FIVEM, 0, -1, true, nullptr, false, L""}); return; }
-    if (id == ID_ENABLE_ALL)  { g_modal = g_modalShown = MODAL_ENABLE_ALL; return; }
     if (id == ID_DISABLE_ALL) { g_modal = g_modalShown = MODAL_DISABLE_ALL; return; }
     if (id == ID_REVERT_ALL)  { g_modal = g_modalShown = MODAL_REVERT; return; }
 }
@@ -2268,7 +1988,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_my = GET_Y_LPARAM(lp) / g_scale;
         g_pressId = TopClick();
         SetCapture(hwnd);
-        if (g_pressId >= ID_SLIDER && g_pressId < ID_SLIDER + 6) {
+        if (g_pressId >= ID_SLIDER && g_pressId < ID_SLIDER + 3) {
             g_drag = g_pressId - ID_SLIDER;
             SliderSet(g_drag, g_mx);
         }
@@ -2303,14 +2023,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
         }
         break;
-    case WM_HOTKEY:
-        if (wp == HOTKEY_CROSS) {
-            g_cross.enabled = !g_cross.enabled;
-            CrossSave();
-            ApplyCross();
-            StartAnim();
-        }
-        return 0;
     case WM_KEYDOWN:
         if (wp == VK_ESCAPE && g_modal) { g_modal = MODAL_NONE; StartAnim(); }
         return 0;
@@ -2327,8 +2039,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             InvalidateRect(hwnd, nullptr, FALSE);
         } else if (wp == TIMER_POLL) {
             PollTick();
-        } else if (wp == TIMER_XTOP) {
-            CrossKeepOnTop();
         } else if (wp == TIMER_BOOST) {
             FiveMAutoBoostTick();
         }
@@ -2394,7 +2104,6 @@ static void InitState() {
     bool fv[4] = {g_fivem.closeApps, g_fivem.cleanCache, g_fivem.recommended, g_fivem.autoBoost};
     for (int i = 0; i < 4; ++i) { g_fm[i].on = fv[i]; g_fm[i].anim = fv[i] ? 1.f : 0.f; }
     DisplayLoad();
-    CrossLoad();
     g_theme = (int)LoadAppDword(L"Theme", 0);
     if (g_theme < 0 || g_theme >= kThemeCount) g_theme = 0;
     const Theme& th = kThemes[g_theme];
@@ -2461,8 +2170,6 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
 
     if (!DisplayIsNeutral()) DisplayApply();   // reaplica as cores salvas
     UpdateBoostTimer();
-    RegisterHotKey(g_hwnd, HOTKEY_CROSS, MOD_CONTROL | MOD_NOREPEAT, VK_F9);
-    if (g_cross.enabled) ApplyCross();
 
     if (justUpdated) Toast(L"Precision Fix atualizado para a versão " + AppVersion(), 1);
     StartUpdateCheck(false);   // auto-update: verifica a última release no GitHub
@@ -2480,7 +2187,6 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
         DispatchMessageW(&m);
     }
 
-    UnregisterHotKey(g_hwnd, HOTKEY_CROSS);
     DisplayShutdown();
     SetRuntimeTimerResolution(false);
     GdiplusShutdown(gtok);

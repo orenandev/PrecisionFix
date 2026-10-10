@@ -7,8 +7,6 @@
 #define APP_VERSION "1.0.0"
 #endif
 
-static const wchar_t* kRepoOwner = L"orenandev";
-static const wchar_t* kRepoName = L"PrecisionFix";
 
 struct UpdateInfo {
     std::wstring version;   // ex: "1.0.12"

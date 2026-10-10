@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Scripts com o final de linha certo em qualquer sistema (o runner do GitHub é Windows)
+*.sh  text eol=lf
+*.bat text eol=crlf
+*.ttf binary
+*.ico binary
+*.png binary

@@ -48,15 +48,3 @@ std::wstring LoadServerAddr();
 void SaveServerAddr(const std::wstring& addr);
 bool ParseServerAddr(const std::wstring& in, std::wstring& host, int& port);
 
-// ---------------- Mira sobreposta ----------------
-struct CrossSettings { int style, color, size, thick, gap, outline, enabled; };
-enum { XS_DOT, XS_CROSS, XS_CROSSDOT, XS_CIRCLE, XS_COUNT };
-extern CrossSettings g_cross;
-extern const unsigned kCrossColors[];       // 0xRRGGBB
-extern const int kCrossColorCount;
-void CrossLoad();
-void CrossSave();
-void CrossApply(HINSTANCE inst);            // cria/atualiza/esconde a janela da mira
-void CrossKeepOnTop();
-namespace Gdiplus { class Graphics; }
-void DrawCrosshair(Gdiplus::Graphics& g, float cx, float cy, const CrossSettings& s);

@@ -1,0 +1,86 @@
+# A cada push na main: compila o PrecisionFix.exe e publica uma nova Release (v1.0.<número do build>).
+# O app verifica a última Release ao abrir e se atualiza sozinho.
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Definir versão
+        id: ver
+        shell: bash
+        run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # Compilador principal: MSVC (gera executáveis com menos falsos positivos de antivírus por ML)
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compilar (MSVC)
+        id: msvc
+        continue-on-error: true
+        shell: cmd
+        run: build_msvc.bat ${{ steps.ver.outputs.version }}
+
+      # Reserva: MinGW-w64, só se o MSVC falhar
+      - uses: msys2/setup-msys2@v2
+        if: steps.msvc.outcome == 'failure'
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc
+
+      - name: Compilar (MinGW - reserva)
+        if: steps.msvc.outcome == 'failure'
+        shell: msys2 {0}
+        run: bash ./build.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Notas da versão
+        shell: bash
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMPILER: ${{ steps.msvc.outcome == 'success' && 'MSVC (Visual Studio)' || 'MinGW-w64' }}
+        run: |
+          SHA=$(sha256sum PrecisionFix.exe | cut -d' ' -f1)
+          {
+            echo "## O que mudou"
+            echo ""
+            echo "${COMMIT_MSG:-Atualização manual}"
+            echo ""
+            echo "## Download"
+            echo "Baixe o **PrecisionFix.exe** abaixo e execute como administrador."
+            echo "Quem já tem o app recebe esta versão **automaticamente** ao abrir."
+            echo ""
+            echo "## Verificação"
+            echo "Compilado pelo GitHub Actions direto do código deste repositório ($COMPILER)."
+            echo ""
+            echo "SHA256: \`$SHA\`"
+          } > notes.md
+          cat notes.md
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Precision Fix v${{ steps.ver.outputs.version }}
+          body_path: notes.md
+          files: PrecisionFix.exe
+          make_latest: "true"
