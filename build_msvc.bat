@@ -1,7 +1,4 @@
 @echo off
-rem Compila o PrecisionFix.exe com o Visual Studio (MSVC) — usado pelo GitHub Actions.
-rem Rode dentro do "x64 Native Tools Command Prompt for VS".
-rem Uso: build_msvc.bat [versao]      ex: build_msvc.bat 1.0.12
 setlocal
 cd /d "%~dp0"
 set VERSION=%1
@@ -20,7 +17,7 @@ cl /nologo /O2 /MT /EHsc /std:c++17 /utf-8 /W3 /GS /guard:cf ^
    src\main.cpp src\tweaks.cpp src\sysinfo.cpp src\extras.cpp src\net.cpp src\updater.cpp build\app.res ^
    /Fobuild\ /FePrecisionFix.exe ^
    /link /SUBSYSTEM:WINDOWS /MANIFEST:NO /DYNAMICBASE /NXCOMPAT /guard:cf ^
-   gdiplus.lib dwmapi.lib powrprof.lib gdi32.lib user32.lib advapi32.lib shell32.lib ole32.lib ws2_32.lib winhttp.lib || goto :fail
+   gdiplus.lib dwmapi.lib powrprof.lib gdi32.lib user32.lib advapi32.lib shell32.lib ole32.lib ws2_32.lib winhttp.lib comdlg32.lib || goto :fail
 
 echo.
 echo OK: PrecisionFix.exe v%VERSION% (MSVC)

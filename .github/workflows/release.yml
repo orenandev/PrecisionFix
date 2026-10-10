@@ -1,5 +1,3 @@
-# A cada push na main: compila o PrecisionFix.exe e publica uma nova Release (v1.0.<número do build>).
-# O app verifica a última Release ao abrir e se atualiza sozinho.
 name: Build & Release
 
 on:
@@ -29,7 +27,6 @@ jobs:
         shell: bash
         run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-      # Compilador principal: MSVC (gera executáveis com menos falsos positivos de antivírus por ML)
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -40,7 +37,6 @@ jobs:
         shell: cmd
         run: build_msvc.bat ${{ steps.ver.outputs.version }}
 
-      # Reserva: MinGW-w64, só se o MSVC falhar
       - uses: msys2/setup-msys2@v2
         if: steps.msvc.outcome == 'failure'
         with:

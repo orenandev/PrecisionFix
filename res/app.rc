@@ -1,10 +1,9 @@
 #include <windows.h>
-#include "version.h"   // gerado pelo build: VER_MAJOR, VER_MINOR, VER_PATCH, VER_STRING
+#include "version.h"
 
 1 RT_MANIFEST "app.manifest"
 1 ICON "app.ico"
 
-// Fonte Inter (SIL Open Font License, ver res/fonts/OFL.txt) embutida
 101 RCDATA "fonts/inter-400.ttf"
 102 RCDATA "fonts/inter-500.ttf"
 103 RCDATA "fonts/inter-600.ttf"

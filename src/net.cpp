@@ -1,4 +1,3 @@
-// Teste de conexão: mede o tempo do handshake TCP (funciona mesmo quando o ping ICMP é bloqueado)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include "extras.h"
@@ -23,7 +22,6 @@ void SaveServerAddr(const std::wstring& addr) {
     RegCloseKey(k);
 }
 
-// Aceita "1.2.3.4:30120", "connect 1.2.3.4:30120", "meuserver.com", "fivem://connect/1.2.3.4:30120"
 bool ParseServerAddr(const std::wstring& in, std::wstring& host, int& port) {
     std::wstring s;
     for (wchar_t c : in) if (!iswspace(c) || !s.empty()) s += c;
@@ -38,7 +36,7 @@ bool ParseServerAddr(const std::wstring& in, std::wstring& host, int& port) {
     if (s.find(L"cfx.re/join") != std::wstring::npos || s.empty() || s.size() > 200) return false;
     size_t slash = s.find(L'/');
     if (slash != std::wstring::npos) s = s.substr(0, slash);
-    port = 30120;   // porta padrão do FiveM
+    port = 30120;
     size_t colon = s.rfind(L':');
     if (colon != std::wstring::npos) {
         port = _wtoi(s.c_str() + colon + 1);
@@ -68,7 +66,6 @@ static double NowMs() {
     return c.QuadPart * 1000.0 / f.QuadPart;
 }
 
-// Retorna o RTT em ms do handshake TCP, ou -1 em caso de falha/timeout
 static double TcpPing(const sockaddr* addr, int addrLen, int family) {
     SOCKET s = socket(family, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) return -1;
