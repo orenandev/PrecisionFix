@@ -22,7 +22,6 @@ static std::wstring Trim(std::wstring s) {
     size_t a = s.find_first_not_of(L" \t"), b = s.find_last_not_of(L" \t");
     if (a == std::wstring::npos) return L"";
     s = s.substr(a, b - a + 1);
-    // colapsa espaços duplos ("Intel(R) Core(TM)   i7")
     std::wstring out;
     for (wchar_t c : s)
         if (!(c == L' ' && !out.empty() && out.back() == L' ')) out += c;
@@ -33,16 +32,14 @@ static void ReplaceAll(std::wstring& s, const std::wstring& a, const std::wstrin
     for (size_t p = 0; (p = s.find(a, p)) != std::wstring::npos; p += b.size()) s.replace(p, a.size(), b);
 }
 
-
 void SysInfoInit() {
-    // Processador
     g_sys.cpu = Trim(RegStr(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"ProcessorNameString"));
     ReplaceAll(g_sys.cpu, L"(R)", L"");
     ReplaceAll(g_sys.cpu, L"(TM)", L"");
     ReplaceAll(g_sys.cpu, L" CPU", L"");
-    size_t with = g_sys.cpu.find(L" with ");          // "AMD Ryzen 5 5600G with Radeon Graphics"
+    size_t with = g_sys.cpu.find(L" with ");
     if (with != std::wstring::npos) g_sys.cpu.erase(with);
-    size_t core = g_sys.cpu.find(L"-Core Processor");  // "AMD Ryzen 7 5800X 8-Core Processor"
+    size_t core = g_sys.cpu.find(L"-Core Processor");
     if (core != std::wstring::npos) {
         size_t sp = g_sys.cpu.rfind(L' ', core);
         if (sp != std::wstring::npos) g_sys.cpu.erase(sp);
@@ -66,7 +63,6 @@ void SysInfoInit() {
     swprintf(tmp, 128, L"%d núcleos · %d threads · %.2f GHz", cores, threads, mhz / 1000.0);
     g_sys.cpuDetail = tmp;
 
-    // Placa de vídeo (adaptador do monitor principal)
     DISPLAY_DEVICEW dd{};
     dd.cb = sizeof dd;
     for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &dd, 0); ++i) {
@@ -75,7 +71,6 @@ void SysInfoInit() {
     }
     if (g_sys.gpu.empty()) g_sys.gpu = L"Desconhecida";
 
-    // Sistema operacional
     const wchar_t* cv = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
     std::wstring prod = RegStr(HKEY_LOCAL_MACHINE, cv, L"ProductName");
     std::wstring build = RegStr(HKEY_LOCAL_MACHINE, cv, L"CurrentBuildNumber");
@@ -84,7 +79,6 @@ void SysInfoInit() {
     std::wstring ver = RegStr(HKEY_LOCAL_MACHINE, cv, L"DisplayVersion");
     g_sys.osDetail = (ver.empty() ? L"" : ver + L" · ") + L"build " + build;
 
-    // Monitor
     DEVMODEW dm{};
     dm.dmSize = sizeof dm;
     if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm)) {
@@ -92,13 +86,11 @@ void SysInfoInit() {
         g_sys.display = tmp;
     }
 
-    // Placa-mãe
     const wchar_t* bios = L"HARDWARE\\DESCRIPTION\\System\\BIOS";
     g_sys.board = Trim(RegStr(HKEY_LOCAL_MACHINE, bios, L"BaseBoardManufacturer") + L" " +
                        RegStr(HKEY_LOCAL_MACHINE, bios, L"BaseBoardProduct"));
     if (g_sys.board.empty()) g_sys.board = L"Desconhecida";
 
-    // Memória
     MEMORYSTATUSEX ms{};
     ms.dwLength = sizeof ms;
     GlobalMemoryStatusEx(&ms);

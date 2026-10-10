@@ -18,9 +18,6 @@ using namespace Gdiplus;
 
 static const wchar_t* kSiteUrl = L"https://usecodelabs.com/";
 
-// ============================================================
-//  Layout (pixels lógicos — multiplicados pela escala de DPI)
-// ============================================================
 static const float W = 1040, H = 700;
 static const float TOP_H = 58, SIDE_W = 236;
 static const float CX = SIDE_W + 46, CW = W - (SIDE_W + 46) - 46;
@@ -32,48 +29,56 @@ enum { PG_DASH, PG_FIX, PG_KBD, PG_FIVEM, PG_PVP, PG_SVC, PG_DISP, PG_CFG, PG_CO
 enum {
     ID_MIN = 1, ID_CLOSE = 2,
     ID_NAV = 10,
-    ID_MCHECK = 100,      // checkboxes da página do mouse (+n)
-    ID_KCHECK = 130,      // checkboxes do Teclado Fix (+n)
+    ID_MCHECK = 100,
+    ID_KCHECK = 130,
     ID_QUICK = 150,
-    ID_FMOPT = 170,       // opções do FiveM (+n)
-    ID_SVC = 180,         // serviços (+n)
+    ID_FMOPT = 170,
+    ID_SVC = 180,
     ID_SWATCH = 200,
-    ID_PRESET = 220,      // presets de display (+n)
-    ID_SLIDER = 240,      // sliders de display (+k)
-    ID_STEP = 500,        // -/+ dos sliders (+k*2+0/1)
-    ID_PVPOPT = 260,      // ajustes de FPS/rede da página PvP (+n)
-    ID_TOOL = 270,        // ferramentas do FiveM (+n)
-    ID_PVP_MODE = 350, ID_PING = 351, ID_PASTE = 352, ID_POLL = 353, ID_UPDATE = 354, ID_REBOOT_PILL = 355,
+    ID_PRESET = 220,
+    ID_SLIDER = 240,
+    ID_STEP = 500,
+    ID_PVPOPT = 260,
+    ID_TOOL = 270,
+    ID_PVP_MODE = 350, ID_PING = 351, ID_PASTE = 352, ID_POLL = 353, ID_UPDATE = 354, ID_REBOOT_PILL = 355, ID_COLOR_PICK = 356,
     ID_RESET_COLOR = 300, ID_REVERT_ALL = 301, ID_ENABLE_ALL = 302, ID_DISABLE_ALL = 303,
-    ID_SITE = 304, ID_SITE_SIDE = 305, ID_SITE_BADGE = 306, ID_FIVEM_LAUNCH = 307,
+    ID_SITE = 304, ID_SITE_SIDE = 305, ID_SITE_BADGE = 306,
     ID_MODAL_CANCEL = 400, ID_MODAL_OK = 401,
     ID_CARD = 1000,
 };
 
 enum { MODAL_NONE, MODAL_ENABLE_ALL, MODAL_DISABLE_ALL, MODAL_REVERT, MODAL_REBOOT };
-enum { JOB_ONE, JOB_ALL_REFS, JOB_REVERT, JOB_SVC, JOB_FIVEM, JOB_TOOL, JOB_PING };
+enum { JOB_ONE, JOB_ALL_REFS, JOB_REVERT, JOB_SVC, JOB_TOOL, JOB_PING };
 enum { SRC_TWEAK, SRC_QUICK, SRC_KBD, SRC_PVP };
 
 static const UINT WM_APP_DONE = WM_APP + 1;
-static const UINT WM_APP_UPD_FOUND = WM_APP + 2;   // wp = std::wstring* versão
-static const UINT WM_APP_UPD_READY = WM_APP + 3;   // wp = std::wstring* caminho do .exe novo
-static const UINT WM_APP_UPD_NONE = WM_APP + 4;    // wp = 1 se a verificação falhou
+static const UINT WM_APP_UPD_FOUND = WM_APP + 2;
+static const UINT WM_APP_UPD_READY = WM_APP + 3;
+static const UINT WM_APP_UPD_NONE = WM_APP + 4;
 static const UINT_PTR TIMER_ANIM = 1, TIMER_BOOST = 2, TIMER_POLL = 4;
 
 struct Theme { Color a, b; };
 static const Theme kThemes[] = {
-    {Color(255, 250, 250, 250), Color(255, 161, 161, 170)}, // CodeLabs (monocromático, padrão)
-    {Color(255, 0, 229, 255),  Color(255, 56, 150, 255)},   // ciano
-    {Color(255, 255, 40, 220), Color(255, 140, 70, 255)},   // magenta
-    {Color(255, 255, 59, 71),  Color(255, 47, 140, 255)},   // vermelho
-    {Color(255, 52, 211, 110), Color(255, 20, 184, 166)},   // verde
-    {Color(255, 255, 176, 46), Color(255, 255, 112, 50)},   // laranja
-    {Color(255, 132, 60, 255), Color(255, 236, 72, 153)},   // roxo
+    {Color(255, 250, 250, 250), Color(255, 161, 161, 170)},
+    {Color(255, 0, 229, 255),  Color(255, 56, 150, 255)},
+    {Color(255, 255, 40, 220), Color(255, 140, 70, 255)},
+    {Color(255, 255, 59, 71),  Color(255, 47, 140, 255)},
+    {Color(255, 52, 211, 110), Color(255, 20, 184, 166)},
+    {Color(255, 255, 176, 46), Color(255, 255, 112, 50)},
+    {Color(255, 132, 60, 255), Color(255, 236, 72, 153)},
 };
 static const int kThemeCount = sizeof(kThemes) / sizeof(kThemes[0]);
+static DWORD g_customColor = 0xA855F7;
+static int g_theme = 0;
 
-// Paleta neutra
-// Paleta neutra (tons "zinc", como o site da CodeLabs)
+static Theme CurrentTheme() {
+    if (g_theme < kThemeCount) return kThemes[g_theme];
+    Color a(255, (BYTE)(g_customColor >> 16), (BYTE)(g_customColor >> 8), (BYTE)g_customColor);
+    Color gray(255, 161, 161, 170);
+    Color b(255, (BYTE)((a.GetR() + gray.GetR()) / 2), (BYTE)((a.GetG() + gray.GetG()) / 2), (BYTE)((a.GetB() + gray.GetB()) / 2));
+    return {a, b};
+}
+
 static const Color cBg(255, 9, 9, 11);
 static const Color cCard(255, 15, 15, 17);
 static const Color cBorder(255, 36, 36, 40);
@@ -82,9 +87,6 @@ static const Color cSub(255, 161, 161, 170);
 static const Color cMuted(255, 113, 113, 122);
 static const Color cOk(255, 52, 211, 153), cErr(255, 248, 113, 113), cWarn(255, 251, 191, 36);
 
-// ============================================================
-//  Estado
-// ============================================================
 struct Hit { int id; RectF r; bool click; };
 struct ToggleState { bool on = false; float anim = 0; };
 
@@ -104,22 +106,21 @@ static std::map<int, float> g_hov;
 static bool g_clip = false;
 static RectF g_clipR;
 
-static std::vector<ToggleState> g_tw, g_qk, g_kb, g_pv, g_fm(4);
+static std::vector<ToggleState> g_tw, g_qk, g_kb, g_pv, g_fm(1);
 static HINSTANCE g_inst;
-static std::vector<PingTarget> g_ping;           // último resultado do teste de conexão
-static bool g_pollActive = false;               // teste de polling rate em andamento
+static std::vector<PingTarget> g_ping;
+static bool g_pollActive = false;
 static std::vector<LONGLONG> g_pollTimes;
 static LONGLONG g_pollStart = 0;
 static int g_pollHz = 0, g_pollLive = 0;
 static HANDLE g_mutex = nullptr;
 static void InstallPendingUpdate();
-static bool g_rebootPending = false;    // alguma alteração aplicada precisa de reinício
+static bool g_rebootPending = false;
 static bool g_updChecking = false;
-static std::wstring g_updPendingPath;    // atualização baixada esperando o app ficar livre
+static std::wstring g_updPendingPath;
 static std::vector<int> g_svcState;
-static int g_drag = -1;               // slider de display sendo arrastado
+static int g_drag = -1;
 static ULONGLONG g_lastDispApply = 0;
-static int g_theme = 0;
 static float g_acc[3], g_acc2[3];
 
 static bool g_busy = false;
@@ -134,10 +135,6 @@ static ULONGLONG g_toastUntil = 0;
 static int g_modal = MODAL_NONE, g_modalShown = MODAL_NONE;
 static float g_modalA = 0;
 
-
-// ============================================================
-//  Fontes (Inter embutida no .exe, fallback Segoe UI)
-// ============================================================
 static PrivateFontCollection* g_pfc[4];
 static FontFamily* g_fam[4];
 static int g_famStyle[4];
@@ -163,7 +160,6 @@ static void LoadEmbeddedFont(int slot, int resId) {
                      : fam->IsStyleAvailable(FontStyleBold)    ? FontStyleBold : FontStyleRegular;
 }
 
-// weight: 0=Regular 1=Medium 2=SemiBold 3=Bold
 static Font* MakeFont(int weight, float px) {
     if (g_fam[weight]) {
         Font* f = new Font(g_fam[weight], px, g_famStyle[weight], UnitPixel);
@@ -198,9 +194,6 @@ static void CreateFonts() {
     fCheck   = MakeFont(2, 10.5f);
 }
 
-// ============================================================
-//  Helpers de desenho
-// ============================================================
 static Color Mix(const Color& a, const Color& b, float t) {
     t = t < 0 ? 0 : (t > 1 ? 1 : t);
     auto L = [t](BYTE x, BYTE y) { return (BYTE)(x + (y - x) * t + 0.5f); };
@@ -251,7 +244,6 @@ static void Text(Graphics& g, const std::wstring& s, Font* f, const Color& c, fl
     SolidBrush b(c);
     g.DrawString(s.c_str(), -1, f, PointF(x, y), Typo(), &b);
 }
-// Medições de texto ficam em cache: MeasureString é caro e os textos quase nunca mudam
 static float TextW(Graphics& g, const std::wstring& s, Font* f) {
     static std::map<std::pair<Font*, std::wstring>, float> cache;
     auto key = std::make_pair(f, s);
@@ -297,9 +289,6 @@ static float Spaced(Graphics& g, const wchar_t* s, Font* f, const Color& c, floa
     return x - sp;
 }
 
-// ============================================================
-//  Hits / hover
-// ============================================================
 static bool IsModalId(int id) { return id == ID_MODAL_CANCEL || id == ID_MODAL_OK; }
 
 static void AddHit(int id, RectF r, bool click) {
@@ -332,12 +321,8 @@ static int TopClick() {
     return 0;
 }
 
-// ============================================================
-//  Widgets
-// ============================================================
 enum { BTN_ACCENT, BTN_DANGER, BTN_APPLIED, BTN_GHOST, BTN_ORANGE };
 
-// Luminância 0..1 — decide se o texto/knob em cima da cor de destaque deve ser escuro
 static float Luma(const Color& c) { return (0.299f * c.GetR() + 0.587f * c.GetG() + 0.114f * c.GetB()) / 255.f; }
 
 static void Arrow(Graphics& g, float x, float cy, const Color& c) {
@@ -358,7 +343,6 @@ static void Check(Graphics& g, float x, float cy, const Color& c) {
     g.DrawLines(&p, pts, 3);
 }
 
-// Botão em pílula no estilo do site (branco com texto escuro / contorno escuro)
 static void Button(Graphics& g, RectF r, const wchar_t* label, int id, int kind, bool enabled = true, bool arrow = false) {
     AddHit(id, r, enabled);
     float h = enabled ? Hov(id) : 0;
@@ -392,7 +376,7 @@ static void Button(Graphics& g, RectF r, const wchar_t* label, int id, int kind,
         tc = Acc();
         check = h < 0.5f;
         break;
-    default: // BTN_GHOST
+    default:
         fill = Mix(Color(255, 12, 12, 14), Color(255, 24, 24, 27), h);
         border = Mix(Color(255, 39, 39, 42), Color(255, 82, 82, 91), h);
         tc = cText;
@@ -419,27 +403,23 @@ static void CardBg(Graphics& g, const RectF& r, int id, bool click = false) {
     StrokeRound(g, r, 16, Mix(cBorder, Acc(0.55f), h), 1.f);
 }
 
-static void DrawToggle(Graphics& g, const RectF& r, float t, bool busy) {
-    Glow(g, r, r.Height / 2, Acc(), t * 0.6f, 3);
-    Color off(255, 24, 24, 27);
-    if (t > 0.01f) {
-        LinearGradientBrush lb(PointF(r.X - 1, 0), PointF(r.X + r.Width + 1, 0), Mix(off, Acc(), t), Mix(off, Mix(Acc(), Acc2(), 0.35f), t));
-        FillRound(g, r, r.Height / 2, lb);
-    } else {
-        FillRound(g, r, r.Height / 2, off);
-    }
-    StrokeRound(g, r, r.Height / 2, Mix(Color(255, 46, 46, 51), Acc(0.0f), t), 1.f);
+static void Padlock(Graphics& g, float cx, float cy, float s, const Color& c) {
+    Pen p(c, 1.4f * s);
+    g.DrawArc(&p, cx - 2.6f * s, cy - 5.2f * s, 5.2f * s, 5.6f * s, 180, 180);
+    g.DrawLine(&p, cx - 2.6f * s, cy - 2.4f * s, cx - 2.6f * s, cy - 0.8f * s);
+    g.DrawLine(&p, cx + 2.6f * s, cy - 2.4f * s, cx + 2.6f * s, cy - 0.8f * s);
+    FillRound(g, RectF(cx - 4 * s, cy - 1.2f * s, 8 * s, 6.4f * s), 1.4f * s, c);
+}
 
+static void DrawLockedToggle(Graphics& g, const RectF& r, float hov) {
+    Color track = Mix(Mix(Acc(), Color(255, 24, 24, 27), 0.55f), Color(255, 40, 40, 44), 0.25f * hov);
+    FillRound(g, r, r.Height / 2, track);
+    StrokeRound(g, r, r.Height / 2, Mix(Color(255, 46, 46, 51), Acc(0.5f), 0.3f), 1.f);
     float d = r.Height - 6;
-    float kx = r.X + 3 + (r.Width - 6 - d) * t, ky = r.Y + 3;
-    SolidBrush sh(Color(80, 0, 0, 0));
-    g.FillEllipse(&sh, kx, ky + 1.2f, d, d);
-    // knob escuro quando a cor de destaque é clara (tema branco)
-    Color onKnob = Luma(Acc()) > 0.8f ? Color(255, 12, 12, 14) : Color(255, 255, 255, 255);
-    Color knob = Mix(Color(255, 161, 161, 170), onKnob, t);
-    if (busy) knob = Mix(knob, Acc(), 0.5f + 0.5f * sinf(g_pulse));
-    SolidBrush kb(knob);
+    float kx = r.X + r.Width - 3 - d, ky = r.Y + 3;
+    SolidBrush kb(Color(255, 200, 200, 206));
     g.FillEllipse(&kb, kx, ky, d, d);
+    Padlock(g, kx + d / 2, ky + d / 2 + 0.4f, 1.f, Color(255, 40, 40, 46));
 }
 
 static void SectionHeader(Graphics& g, const wchar_t* text, float y) {
@@ -449,7 +429,6 @@ static void SectionHeader(Graphics& g, const wchar_t* text, float y) {
     g.FillRectangle(&lb, end + 14, ly, CX + CW - end - 14, 1.f);
 }
 
-// Logo da CodeLabs: "<" + "/" (vetorizado do logo oficial; altura = 16*s, largura ≈ 27*s)
 static void CodeLabsMark(Graphics& g, float x, float y, float s, const Color& c) {
     static const float L[8][2] = {{159, 0}, {371, 0}, {371, 104}, {274, 265}, {371, 422}, {371, 529}, {159, 529}, {0, 265}};
     static const float R[6][2] = {{678, 0}, {889, 0}, {889, 109}, {638, 529}, {425, 529}, {425, 422}};
@@ -462,11 +441,6 @@ static void CodeLabsMark(Graphics& g, float x, float y, float s, const Color& c)
     g.FillPolygon(&b, rp, 6);
 }
 
-
-
-// ============================================================
-//  Referências: cada checkbox das páginas Mouse/Teclado aponta para um Tweak
-// ============================================================
 struct Ref { int src; int idx; const wchar_t* label; };
 static std::vector<Ref> g_mouseRefs, g_kbdRefs;
 
@@ -496,7 +470,6 @@ static int FindQuick(const wchar_t* name) {
 static void BuildRefs() {
     struct { int src; const wchar_t* name; const wchar_t* label; } mouse[] = {
         {SRC_QUICK, L"Precisão do Mouse (1:1)", L"MOUSE PRECISION"},
-        {SRC_QUICK, L"Performance Máxima",      L"PERFORMANCE BOOST"},
         {SRC_TWEAK, L"Tracking",                L"TRACKING"},
         {SRC_TWEAK, L"Sensi",                   L"SENSI"},
         {SRC_TWEAK, L"Flick",                   L"FLICK"},
@@ -506,7 +479,6 @@ static void BuildRefs() {
         {SRC_TWEAK, L"Sensi X/Y",               L"SENSI X/Y"},
         {SRC_TWEAK, L"Flags",                   L"FLAGS"},
         {SRC_TWEAK, L"Accessibility",           L"ACCESSIBILITY"},
-        {SRC_TWEAK, L"Boost Fivem",             L"BOOST FIVEM"},
     };
     for (auto& m : mouse) {
         int i = m.src == SRC_QUICK ? FindQuick(m.name) : FindTweak(m.name);
@@ -517,19 +489,45 @@ static void BuildRefs() {
     for (int i = 0; i < g_kbdCount && i < 8; ++i) g_kbdRefs.push_back({SRC_KBD, i, kl[i]});
 }
 
-// ============================================================
-//  Ícones da barra lateral (vetor)
-// ============================================================
 static const wchar_t* kPageNames[PG_COUNT] = {
     L"Dashboard", L"Precision Fix", L"Teclado Fix", L"FiveM", L"PvP", L"Serviços", L"Display", L"Configurações"};
 
+static std::vector<PointF> ClipHalfPlane(const std::vector<PointF>& poly, float a, float b, float c) {
+    std::vector<PointF> out;
+    for (size_t i = 0; i < poly.size(); ++i) {
+        const PointF& p = poly[i];
+        const PointF& q = poly[(i + 1) % poly.size()];
+        float fp = a * p.X + b * p.Y - c, fq = a * q.X + b * q.Y - c;
+        if (fp <= 0) out.push_back(p);
+        if ((fp < 0 && fq > 0) || (fp > 0 && fq < 0)) {
+            float t = fp / (fp - fq);
+            out.push_back(PointF(p.X + (q.X - p.X) * t, p.Y + (q.Y - p.Y) * t));
+        }
+    }
+    return out;
+}
+
 static void FiveMGlyph(Graphics& g, float cx, float cy, float s, const Color& c) {
-    // "Λ" estilizado com corte interno
-    PointF pts[7] = {PointF(cx - 8 * s, cy + 8 * s), PointF(cx - 1.5f * s, cy - 8 * s), PointF(cx + 2.5f * s, cy - 8 * s),
-                     PointF(cx + 9 * s, cy + 8 * s), PointF(cx + 4.5f * s, cy + 8 * s), PointF(cx + 0.5f * s, cy - 2 * s),
-                     PointF(cx - 3.5f * s, cy + 8 * s)};
+    const float hgt = 18.f * s, wid = hgt * 0.92f;
+    auto P = [&](float ux, float uy) { return PointF(cx + (ux / 100.f - 0.5f) * wid, cy + (uy / 100.f - 0.5f) * hgt); };
+    const float legs[2][5][2] = {
+        {{35, 0}, {50.4f, 0}, {50.4f, 30}, {28, 100}, {0, 100}},
+        {{50, 0}, {65, 0}, {100, 100}, {72, 100}, {50, 30}},
+    };
+    const float bands[4][2] = {{-1000, 58.5f}, {61.5f, 66}, {69, 73.5f}, {76.5f, 1000}};
     SolidBrush b(c);
-    g.FillPolygon(&b, pts, 7);
+    for (auto& leg : legs) {
+        std::vector<PointF> base;
+        for (auto& pt : leg) base.push_back(PointF(pt[0], pt[1]));
+        for (auto& band : bands) {
+            std::vector<PointF> piece = ClipHalfPlane(base, 1, 1, band[1]);
+            piece = ClipHalfPlane(piece, -1, -1, -band[0]);
+            if (piece.size() < 3) continue;
+            std::vector<PointF> pts;
+            for (auto& u : piece) pts.push_back(P(u.X, u.Y));
+            g.FillPolygon(&b, pts.data(), (INT)pts.size());
+        }
+    }
 }
 
 static void NavIcon(Graphics& g, int which, float cx, float cy, const Color& c) {
@@ -546,7 +544,7 @@ static void NavIcon(Graphics& g, int which, float cx, float cy, const Color& c) 
             g.DrawPath(&p, &gp);
         }
         break;
-    case PG_FIX: {   // mouse
+    case PG_FIX: {
         GraphicsPath gp;
         RoundRect(gp, RectF(cx - 5.5f, cy - 8, 11, 16), 5.5f);
         g.DrawPath(&p, &gp);
@@ -564,7 +562,7 @@ static void NavIcon(Graphics& g, int which, float cx, float cy, const Color& c) 
     case PG_FIVEM:
         FiveMGlyph(g, cx, cy, 0.95f, c);
         break;
-    case PG_PVP: {   // duas espadas cruzadas
+    case PG_PVP: {
         g.DrawLine(&p, cx - 7, cy - 7, cx + 6, cy + 6);
         g.DrawLine(&p, cx + 7, cy - 7, cx - 6, cy + 6);
         g.DrawLine(&p, cx + 3, cy + 7, cx + 7, cy + 3);
@@ -596,19 +594,16 @@ static void NavIcon(Graphics& g, int which, float cx, float cy, const Color& c) 
     }
 }
 
-// ============================================================
-//  Fundo e moldura
-// ============================================================
 static void DrawBackground(Graphics& g) {
     SolidBrush bg(cBg);
     g.FillRectangle(&bg, 0.f, 0.f, W, H);
-    {   // grade de pontos sutil (como o fundo do site)
+    {
         SolidBrush d(Color(16, 255, 255, 255));
         for (float y = 11; y < H; y += 24)
             for (float x = SIDE_W + 11; x < W; x += 24)
                 g.FillRectangle(&d, x, y, 2.f, 2.f);
     }
-    {   // brilho suave atrás do conteúdo
+    {
         GraphicsPath gp;
         gp.AddEllipse(CX - 180.f, -260.f, 980.f, 640.f);
         PathGradientBrush pg(&gp);
@@ -652,7 +647,7 @@ static void DrawChrome(Graphics& g) {
         Text(g, kPageNames[i], fNav, tc, r.X + 54, r.Y + 11);
     }
 
-    if (g_rebootPending) {   // alerta de reinício pendente
+    if (g_rebootPending) {
         RectF rp(14, H - 156, SIDE_W - 28, 34);
         AddHit(ID_REBOOT_PILL, rp, true);
         float h = Hov(ID_REBOOT_PILL);
@@ -699,9 +694,6 @@ static void DrawChrome(Graphics& g) {
     }
 }
 
-// ============================================================
-//  Ilustrações (mouse e teclado) — renderizadas uma vez e guardadas em bitmap
-// ============================================================
 static Color Hsv(float h, float s, float v) {
     h = fmodf(h, 360.f) / 60.f;
     int i = (int)h;
@@ -723,7 +715,6 @@ static const float KBD_W = 310, KBD_H = 118;
 
 static void DrawMouseArt(Graphics& g, const Color& acc) {
     float cx = MOUSE_W / 2;
-    // sombra
     {
         GraphicsPath sp;
         sp.AddEllipse(18.f, MOUSE_H - 30, MOUSE_W - 36, 26.f);
@@ -743,7 +734,7 @@ static void DrawMouseArt(Graphics& g, const Color& acc) {
     body.CloseFigure();
     LinearGradientBrush fill(PointF(0, 0), PointF(0, MOUSE_H), Color(255, 30, 30, 34), Color(255, 12, 12, 14));
     g.FillPath(&fill, &body);
-    {   // reflexo lateral
+    {
         GraphicsState st = g.Save();
         g.SetClip(&body);
         GraphicsPath hl;
@@ -754,7 +745,6 @@ static void DrawMouseArt(Graphics& g, const Color& acc) {
         INT n = 1;
         pg.SetSurroundColors(&sc, &n);
         g.FillPath(&pg, &hl);
-        // divisão dos botões
         Pen seam(Color(255, 6, 6, 8), 1.6f);
         g.DrawLine(&seam, cx, 4.f, cx, 104.f);
         GraphicsPath arc;
@@ -764,19 +754,15 @@ static void DrawMouseArt(Graphics& g, const Color& acc) {
     }
     Pen edge(Color(255, 46, 46, 52), 1.2f);
     g.DrawPath(&edge, &body);
-    // botões laterais
     FillRound(g, RectF(cx - 74, 112, 5, 26), 2.5f, Color(255, 26, 26, 30));
     FillRound(g, RectF(cx - 74, 142, 5, 26), 2.5f, Color(255, 26, 26, 30));
-    // scroll com faixa de luz
     RectF wheel(cx - 8, 28, 16, 46);
     FillRound(g, wheel, 8, Color(255, 8, 8, 10));
     StrokeRound(g, wheel, 8, Color(255, 50, 50, 56));
     RectF strip(cx - 2.5f, 33, 5, 36);
     for (int i = 4; i >= 1; --i) FillRound(g, Inflate(strip, i * 2.f), 2.5f + i * 2, Alpha(acc, 0.07f));
     FillRound(g, strip, 2.5f, acc);
-    // botão de DPI
     FillRound(g, RectF(cx - 4, 82, 8, 13), 3, Color(255, 20, 20, 23));
-    // logo CodeLabs com brilho
     float lw = 27.f * 1.55f, lh = 16.f * 1.55f;
     for (int i = 3; i >= 1; --i) {
         GraphicsPath gp;
@@ -789,7 +775,6 @@ static void DrawMouseArt(Graphics& g, const Color& acc) {
 
 static void DrawKeyboardArt(Graphics& g) {
     RectF body(2, 2, KBD_W - 4, KBD_H - 4);
-    // brilho RGB embaixo do teclado
     for (int i = 0; i < 24; ++i) {
         RectF seg(body.X + i * body.Width / 24, body.Y + body.Height - 6, body.Width / 24 + 1, 8);
         SolidBrush b(Alpha(Hsv(i * 15.f, 0.9f, 1), 0.35f));
@@ -814,11 +799,11 @@ static void DrawKeyboardArt(Graphics& g) {
             float w = rows[r][k] * u;
             RectF key(x + 1.2f, y + 1.2f, w - 2.4f, u - 2.4f);
             Color rgb = Hsv((x + w / 2) / KBD_W * 300.f, 0.85f, 1.f);
-            FillRound(g, Inflate(key, 1.2f), 3.5f, Alpha(rgb, 0.45f));            // luz por baixo da tecla
+            FillRound(g, Inflate(key, 1.2f), 3.5f, Alpha(rgb, 0.45f));
             LinearGradientBrush kb(PointF(0, key.Y), PointF(0, key.Y + key.Height), Color(255, 38, 38, 43), Color(255, 22, 22, 25));
             FillRound(g, RectF(key.X, key.Y, key.Width, key.Height - 1.5f), 2.5f, kb);
             SolidBrush lg(Alpha(rgb, 0.9f));
-            g.FillRectangle(&lg, key.X + 3, key.Y + 2.5f, 3.f, 1.3f);              // legenda "acesa"
+            g.FillRectangle(&lg, key.X + 3, key.Y + 2.5f, 3.f, 1.3f);
             x += w;
         }
     }
@@ -848,9 +833,6 @@ static void DrawArt(Graphics& g, ArtCache& cache, unsigned key, float x, float y
 
 static unsigned AccKey() { return ((unsigned)g_acc[0] << 16) | ((unsigned)g_acc[1] << 8) | (unsigned)g_acc[2]; }
 
-// ============================================================
-//  Widgets de página
-// ============================================================
 static bool Offscreen(const RectF& r) { return r.Y > VIEW_BOT || r.Y + r.Height < VIEW_TOP - 10; }
 
 static void CheckBox(Graphics& g, const RectF& r, float t, float hov, bool busy) {
@@ -866,7 +848,6 @@ static void CheckBox(Graphics& g, const RectF& r, float t, float hov, bool busy)
     }
 }
 
-// Linha "LABEL [x]" (labelLeft) ou "[x] LABEL"; edgeX = borda da caixa voltada para a ilustração
 static void CheckRow(Graphics& g, float edgeX, float cy, bool labelLeft, const Ref& ref, int id, bool busy) {
     const float box = 22, gap = 12;
     float lw = SpacedW(g, ref.label, fCheck, 1.2f);
@@ -882,19 +863,14 @@ static void CheckRow(Graphics& g, float edgeX, float cy, bool labelLeft, const R
     CheckBox(g, br, st.anim, h, busy);
 }
 
-// Caixa de descrição do item sob o mouse (Mouse/Teclado)
 static void DescribeBox(Graphics& g, float y, const std::vector<Ref>& refs, int baseId) {
-    RectF r(CX, y, CW, 96);
-    FillRound(g, r, 16, cCard);
-    StrokeRound(g, r, 16, cBorder);
     int hov = -1;
     for (int i = 0; i < (int)refs.size(); ++i)
         if (MouseIn(baseId + i)) hov = i;
-    if (hov < 0) {
-        TextBox(g, L"Passe o mouse sobre uma opção para ver o que ela faz. Clique para ativar ou desativar.",
-                fDesc, cMuted, RectF(r.X + 24, r.Y, r.Width - 48, r.Height), true, StringAlignmentNear, StringAlignmentCenter);
-        return;
-    }
+    if (hov < 0) return;
+    RectF r(CX, y, CW, 96);
+    FillRound(g, r, 16, cCard);
+    StrokeRound(g, r, 16, cBorder);
     const Tweak& t = RefTweak(refs[hov]);
     Text(g, t.name, fTglT, cText, r.X + 24, r.Y + 16);
     float tx = r.X + 24 + TextW(g, t.name, fTglT) + 10;
@@ -925,9 +901,6 @@ static bool BusyFor(int src, int idx) {
     return g_busyKind == JOB_ALL_REFS || g_busyKind == JOB_REVERT || (g_busyKind == JOB_ONE && g_busyIdx == src * 1000 + idx);
 }
 
-// ============================================================
-//  Páginas
-// ============================================================
 static float PageDashboard(Graphics& g, float y) {
     SectionHeader(g, L"SEU SISTEMA", y);
     y += 30;
@@ -952,9 +925,12 @@ static float PageMouse(Graphics& g, float y) {
     float top = y + 10;
     DrawArt(g, g_mouseArt, AccKey(), cx - MOUSE_W / 2, top, MOUSE_W, MOUSE_H, DrawMouseArt);
     float r0 = top + (MOUSE_H - rowsH) / 2 + 21;
-    for (int i = 0; i < (int)g_mouseRefs.size(); ++i) {
-        bool left = i < 6;
-        float cy = r0 + (i % 6) * 42.f;
+    int n = (int)g_mouseRefs.size(), nl = (n + 1) / 2;
+    for (int i = 0; i < n; ++i) {
+        bool left = i < nl;
+        int row = left ? i : i - nl;
+        float off = left ? 0.f : (nl - (n - nl)) * 21.f;
+        float cy = r0 + row * 42.f + off;
         const Ref& rf = g_mouseRefs[i];
         CheckRow(g, left ? cx - 112 : cx + 112, cy, left, rf, ID_MCHECK + i, BusyFor(rf.src, rf.idx));
     }
@@ -982,43 +958,6 @@ static float PageKeyboard(Graphics& g, float y) {
 }
 
 static float PageFiveM(Graphics& g, float y) {
-    RectF r(CX, y, CW, 108);
-    CardBg(g, r, ID_CARD + 80);
-    RectF ib(r.X + 24, r.Y + 26, 56, 56);
-    FillRound(g, ib, 14, Color(255, 28, 18, 10));
-    StrokeRound(g, ib, 14, Color(110, 249, 115, 22));
-    FiveMGlyph(g, ib.X + 28, ib.Y + 28, 1.35f, Color(255, 249, 115, 22));
-    Text(g, L"Jogar FiveM", fCardT, cText, r.X + 98, r.Y + 28);
-    Text(g, L"Prepara o PC do seu jeito e abre o jogo", fDesc, cSub, r.X + 98, r.Y + 55);
-    bool inst = FiveMInstalled();
-    SolidBrush d(inst ? cOk : cWarn);
-    g.FillEllipse(&d, r.X + 99, r.Y + 81, 6.f, 6.f);
-    Text(g, inst ? L"FiveM encontrado" : L"FiveM não encontrado · tentará abrir pelo link fivem://", fSmall, cMuted, r.X + 112, r.Y + 77);
-    bool busyMe = g_busy && g_busyKind == JOB_FIVEM;
-    Button(g, RectF(r.X + r.Width - 24 - 168, r.Y + (r.Height - 46) / 2, 168, 46), busyMe ? L"Preparando..." : L"Abrir FiveM",
-           ID_FIVEM_LAUNCH, BTN_ORANGE, !g_busy, !busyMe);
-    y += 108 + 28;
-
-    SectionHeader(g, L"AO ABRIR O JOGO, O PAINEL VAI:", y);
-    y += 30;
-    struct { const wchar_t* t; const wchar_t* d; } opts[4] = {
-        {L"Fechar apps em segundo plano", L"Navegadores, Spotify, OneDrive, Teams... (Discord e Steam são mantidos)"},
-        {L"Limpar a RAM e Cache FiveM", L"Libera a RAM em standby e apaga o cache do FiveM (mantém a game-storage)"},
-        {L"Aplicar otimizações recomendadas", L"Tracking, Flags, Boost Fivem e plano de energia de alto desempenho"},
-        {L"Boost automático ao detectar o jogo", L"Força prioridade alta no processo do jogo enquanto o painel estiver aberto"},
-    };
-    bool* vals[4] = {&g_fivem.closeApps, &g_fivem.cleanCache, &g_fivem.recommended, &g_fivem.autoBoost};
-    for (int i = 0; i < 4; ++i) {
-        RectF c(CX, y, CW, 72);
-        CardBg(g, c, ID_FMOPT + i, true);
-        g_fm[i].on = *vals[i];
-        CheckBox(g, RectF(c.X + 22, c.Y + 25, 22, 22), g_fm[i].anim, Hov(ID_FMOPT + i), false);
-        Text(g, opts[i].t, fTglT, cText, c.X + 62, c.Y + 16);
-        TextBox(g, opts[i].d, fSmall, cSub, RectF(c.X + 62, c.Y + 42, c.Width - 84, 18), false);
-        y += 72 + 12;
-    }
-
-    y += 16;
     SectionHeader(g, L"FERRAMENTAS", y);
     y += 30;
     struct { const wchar_t* t; const wchar_t* d; const wchar_t* btn; } tools[TOOL_COUNT] = {
@@ -1026,7 +965,6 @@ static float PageFiveM(Graphics& g, float y) {
         {L"Limpar logs e crashes", L"Remove relatórios de erro antigos", L"Limpar"},
         {L"Limpar cache de DNS", L"Resolve falhas ao conectar no servidor", L"Limpar"},
         {L"Limpar temporários", L"Esvazia a pasta %TEMP% do Windows", L"Limpar"},
-        {L"Fechar FiveM travado", L"Encerra todos os processos do FiveM", L"Fechar"},
         {L"Abrir pasta do FiveM", L"FiveM Application Data no Explorer", L"Abrir"},
     };
     float tw = (CW - 14) / 2, th = 84;
@@ -1038,21 +976,23 @@ static float PageFiveM(Graphics& g, float y) {
         TextBox(g, tools[i].d, fSmall, cSub, RectF(c.X + 20, c.Y + 46, c.Width - 20 - 110, 32));
         bool busyMe = g_busy && g_busyKind == JOB_TOOL && g_busyIdx == i;
         Button(g, RectF(c.X + c.Width - 20 - 92, c.Y + (th - 38) / 2, 92, 38), busyMe ? L"..." : tools[i].btn,
-               ID_TOOL + i, i == TOOL_KILL ? BTN_DANGER : BTN_GHOST, !g_busy);
+               ID_TOOL + i, BTN_GHOST, !g_busy);
     }
-    y += 3 * (th + 14);
-    return y;
+    y += 3 * (th + 14) + 16;
+
+    SectionHeader(g, L"DESEMPENHO", y);
+    y += 30;
+    RectF c(CX, y, CW, 72);
+    CardBg(g, c, ID_FMOPT, true);
+    g_fm[0].on = g_fivem.autoBoost;
+    CheckBox(g, RectF(c.X + 22, c.Y + 25, 22, 22), g_fm[0].anim, Hov(ID_FMOPT), false);
+    Text(g, L"Boost automático ao detectar o jogo", fTglT, cText, c.X + 62, c.Y + 16);
+    TextBox(g, L"Força prioridade alta no processo do FiveM enquanto o painel estiver aberto", fSmall, cSub,
+            RectF(c.X + 62, c.Y + 42, c.Width - 84, 18), false);
+    return y + 72 + 12;
 }
 
 static float PageServices(Graphics& g, float y) {
-    RectF n(CX, y, CW, 52);
-    FillRound(g, n, 14, cCard);
-    StrokeRound(g, n, 14, cBorder);
-    SolidBrush wd(Acc());
-    g.FillEllipse(&wd, n.X + 20, n.Y + 22, 8.f, 8.f);
-    TextBox(g, L"Veja quais serviços do Windows estão ativos e reative os que estiverem parados ou desativados.",
-            fDesc, cSub, RectF(n.X + 40, n.Y, n.Width - 60, n.Height), false, StringAlignmentNear, StringAlignmentCenter);
-    y += 52 + 18;
     for (int i = 0; i < g_serviceCount; ++i) {
         RectF r(CX, y, CW, 70);
         if (Offscreen(r)) { y += 70 + 12; continue; }
@@ -1075,7 +1015,10 @@ static float PageServices(Graphics& g, float y) {
 
         bool busyMe = g_busy && ((g_busyKind == JOB_SVC && g_busyIdx == i) || g_busyKind == JOB_REVERT);
         RectF act(r.X + r.Width - 22 - 50, r.Y + (r.Height - 26) / 2, 50, 26);
-        if (st == SVC_RUNNING) DrawToggle(g, act, 1.f, false);   // ativo: só mostra (não dá para desativar)
+        if (st == SVC_RUNNING) {
+            AddHit(ID_SVC + i, act, true);
+            DrawLockedToggle(g, act, Hov(ID_SVC + i));
+        }
         else if (!missing) Button(g, RectF(r.X + r.Width - 22 - 96, r.Y + (r.Height - 38) / 2, 96, 38), busyMe ? L"..." : L"Ativar",
                                   ID_SVC + i, BTN_ACCENT, !g_busy);
         y += 70 + 12;
@@ -1083,7 +1026,6 @@ static float PageServices(Graphics& g, float y) {
     return y;
 }
 
-// --- Display
 struct Preset { const wchar_t* name; const wchar_t* desc; int sat, temp, gam; };
 static const Preset kPresets[] = {
     {L"Padrão",      L"Volta tudo ao neutro: cores e brilho originais.",      50, 6500, 100},
@@ -1093,7 +1035,6 @@ static const Preset kPresets[] = {
     {L"Competitivo", L"Máximo de visibilidade e contraste.",                   70, 6800, 115},
 };
 static const int kPresetCount = sizeof(kPresets) / sizeof(kPresets[0]);
-// --- Sliders do Display
 struct SliderDef { const wchar_t* name; int lo, hi, step; };
 static const SliderDef kSliders[3] = {{L"Saturação", 0, 100, 1}, {L"Temperatura", 3000, 9000, 100}, {L"Gama", 50, 200, 5}};
 static RectF g_sliderTrack[3];
@@ -1107,7 +1048,6 @@ static std::wstring SliderText(int k) {
     return b;
 }
 
-// Linha: nome, [-] [valor] [+] e trilho do slider. Retorna a altura usada.
 static float SliderRow(Graphics& g, int k, float x, float ry, float w) {
     Text(g, kSliders[k].name, fRow, cText, x, ry + 6);
     float bx = x + w;
@@ -1165,14 +1105,10 @@ static float PageDisplay(Graphics& g, float y) {
     StrokeRound(g, card, 16, cBorder);
     for (int k = 0; k < 3; ++k) SliderRow(g, k, card.X + 24, card.Y + 22 + k * 84.f, card.Width - 48);
     y += card.Height + 14;
-    TextBox(g, L"Temperatura e gama ficam salvas no monitor. A saturação fica ativa enquanto o Precision Fix estiver aberto (pode minimizar).",
-            fSmall, cMuted, RectF(CX + 2, y, CW, 36));
-    return y + 40;
+    return y;
 }
 
-// --- PvP
 static float PagePvP(Graphics& g, float y) {
-    // Conexão + polling lado a lado
     float hw = (CW - 16) / 2, hh = 236;
     RectF c1(CX, y, hw, hh);
     CardBg(g, c1, ID_CARD + 91);
@@ -1248,12 +1184,27 @@ static float PageConfig(Graphics& g, float y) {
     RectF r(CX, y, CW, 192);
     CardBg(g, r, ID_CARD + 40);
     Text(g, L"Personalização de Cor", fCardT, cText, r.X + 26, r.Y + 26);
-    TextBox(g, L"Escolha a cor de destaque do seu painel para um visual único.", fDesc, cSub, RectF(r.X + 26, r.Y + 55, 340, 40));
+    TextBox(g, L"Escolha uma cor pronta ou clique no quadrado para escolher qualquer cor.", fDesc, cSub, RectF(r.X + 26, r.Y + 55, 380, 40));
     Button(g, RectF(r.X + r.Width - 26 - 120, r.Y + 24, 120, 40), L"Resetar", ID_RESET_COLOR, BTN_GHOST);
     RectF sw(r.X + 26, r.Y + 112, 58, 52);
-    Glow(g, sw, 4, Acc(), 0.8f, 3);
-    LinearGradientBrush swb(PointF(sw.X, sw.Y), PointF(sw.X + sw.Width, sw.Y + sw.Height), Acc(), Mix(Acc(), Acc2(), 0.35f));
-    FillRound(g, sw, 4, swb);
+    AddHit(ID_COLOR_PICK, sw, true);
+    float sh = Hov(ID_COLOR_PICK);
+    RectF swd = Inflate(sw, sh * 2);
+    Glow(g, swd, 6, Acc(), 0.8f + 0.6f * sh, 3);
+    LinearGradientBrush swb(PointF(swd.X, swd.Y), PointF(swd.X + swd.Width, swd.Y + swd.Height), Acc(), Mix(Acc(), Acc2(), 0.35f));
+    FillRound(g, swd, 6, swb);
+    StrokeRound(g, swd, 6, Color((BYTE)(60 + 120 * sh), 255, 255, 255), 1.2f);
+    if (sh > 0.05f) {
+        Color ic = Luma(Acc()) > 0.6f ? Color((BYTE)(220 * sh), 10, 10, 11) : Color((BYTE)(240 * sh), 255, 255, 255);
+        Pen pp(ic, 1.8f);
+        pp.SetStartCap(LineCapRound);
+        pp.SetEndCap(LineCapRound);
+        float mx = swd.X + swd.Width / 2, my = swd.Y + swd.Height / 2;
+        g.DrawLine(&pp, mx - 6, my + 6, mx + 5, my - 5);
+        g.DrawLine(&pp, mx - 6, my + 6, mx - 7, my + 7);
+        SolidBrush tip(ic);
+        g.FillEllipse(&tip, mx + 3, my - 8, 6.f, 6.f);
+    }
     for (int i = 0; i < kThemeCount; ++i) {
         float cx = sw.X + sw.Width + 40 + i * 42.f, cy = sw.Y + sw.Height / 2;
         AddHit(ID_SWATCH + i, RectF(cx - 17, cy - 17, 34, 34), true);
@@ -1268,7 +1219,6 @@ static float PageConfig(Graphics& g, float y) {
     }
     y += 192 + 18;
 
-    // Versão + atualização (o app também verifica sozinho ao abrir)
     r = RectF(CX, y, CW, 104);
     CardBg(g, r, ID_CARD + 41);
     Text(g, L"Versão " + AppVersion(), fCardT, cText, r.X + 26, r.Y + 28);
@@ -1346,14 +1296,10 @@ static void DrawModal(Graphics& g) {
     }
 }
 
-// ============================================================
-//  Renderização
-// ============================================================
 static HDC g_bufDC = nullptr, g_bgDC = nullptr;
 static HBITMAP g_bufBmp = nullptr, g_bgBmp = nullptr;
 static int g_bufW = 0, g_bufH = 0;
 
-// DIB de 32 bits: o GDI+ desenha ~6x mais rápido nele do que num bitmap compatível (DDB)
 static HBITMAP CreateDib(HDC hdc, int w, int h) {
     BITMAPINFO bi{};
     bi.bmiHeader.biSize = sizeof bi.bmiHeader;
@@ -1393,7 +1339,7 @@ static const wchar_t* PageSub(int p) {
     switch (p) {
         case PG_FIX:   return L"Configuração avançada de precisão e resposta (Tracking/Flick)";
         case PG_KBD:   return L"Resposta, repetição e atalhos do teclado";
-        case PG_FIVEM: return L"Prepara o PC, limpa o cache e abre o jogo";
+        case PG_FIVEM: return L"Limpeza do cache e boost automático";
         case PG_PVP:   return L"Conexão, polling rate e ajustes de FPS e rede";
         case PG_SVC:   return L"Gerenciamento de serviços do sistema";
         case PG_DISP:  return L"Otimizações de vídeo e monitor";
@@ -1487,9 +1433,6 @@ static void Paint(HDC hdc, int pw, int ph) {
     BitBlt(hdc, 0, 0, pw, ph, mem, 0, 0, SRCCOPY);
 }
 
-// ============================================================
-//  Lógica
-// ============================================================
 static void StartAnim() { SetTimer(g_hwnd, TIMER_ANIM, 15, nullptr); }
 
 static void Toast(const std::wstring& s, int kind) {
@@ -1525,8 +1468,8 @@ struct Job {
     int kind, src, idx;
     bool on;
     const std::vector<Ref>* refs;
-    bool before;          // estado antes (para detectar "já é o padrão")
-    std::wstring msg;     // resumo devolvido pelo worker (FiveM / ferramentas)
+    bool before;
+    std::wstring msg;
     std::vector<PingTarget> ping;
 };
 
@@ -1562,9 +1505,6 @@ static DWORD WINAPI Worker(LPVOID p) {
     case JOB_PING:
         RunPingTest(j->ping);
         break;
-    case JOB_FIVEM:
-        ok = FiveMPrepareAndLaunch(j->msg);
-        break;
     }
     PostMessageW(g_hwnd, WM_APP_DONE, (WPARAM)j, ok ? 1 : 0);
     return 0;
@@ -1578,10 +1518,10 @@ static void RunJob(Job* j) {
     if (j->kind == JOB_ONE) {
         Ref r{j->src, j->idx, nullptr};
         j->before = RefState(r).on;
-        RefState(r).on = j->on;  // anima de imediato
+        RefState(r).on = j->on;
     }
     if (j->kind == JOB_ALL_REFS) for (const Ref& r : *j->refs) RefState(r).on = j->on;
-    Toast(j->kind == JOB_FIVEM ? L"Preparando o PC para o FiveM..." : j->kind == JOB_PING ? L"Testando conexão..." :
+    Toast(j->kind == JOB_PING ? L"Testando conexão..." :
           j->kind == JOB_TOOL ? L"Executando..." : L"Aplicando alterações...", 3);
     g_toastUntil = ~0ULL;
     HANDLE h = CreateThread(nullptr, 0, Worker, j, 0, nullptr);
@@ -1631,14 +1571,10 @@ static void OnJobDone(Job* j, bool ok) {
         g_ping = j->ping;
         msg = L"Teste de conexão concluído";
         break;
-    case JOB_FIVEM:
-        msg = ok ? (j->msg.empty() ? L"FiveM aberto" : L"FiveM aberto · " + j->msg) : L"Não foi possível abrir o FiveM";
-        break;
     }
-    if (!ok && j->kind != JOB_FIVEM && j->kind != JOB_TOOL) msg = L"Falha: " + msg + L" (execute como administrador)";
+    if (!ok && j->kind != JOB_TOOL) msg = L"Falha: " + msg + L" (execute como administrador)";
     else if (ok && reboot) { msg += L"  ·  reinicie o PC"; g_rebootPending = true; }
     Toast(msg, ok ? 1 : 2);
-    // Depois de mudanças em massa, avisa claramente que precisa reiniciar
     if (ok && (j->kind == JOB_ALL_REFS || j->kind == JOB_REVERT)) g_modal = g_modalShown = MODAL_REBOOT;
     delete j;
     if (!g_updPendingPath.empty() && !g_modal) InstallPendingUpdate();
@@ -1650,7 +1586,6 @@ static void ApplyDisplayNow(bool save) {
     if (save) DisplaySave();
 }
 
-// final = soltou o mouse / clicou no -/+ (salva). Display limitado a ~25 aplicações/s durante o arraste.
 static void SliderChanged(int k, bool final) {
     if (final || GetTickCount64() - g_lastDispApply > 40) ApplyDisplayNow(final);
     StartAnim();
@@ -1667,9 +1602,8 @@ static void SliderSet(int k, float mx) {
     }
 }
 
-// --- Teste de polling rate (Raw Input, só enquanto o teste roda)
 static void PollStart() {
-    RAWINPUTDEVICE rid{0x01, 0x02, 0, g_hwnd};   // mouse genérico
+    RAWINPUTDEVICE rid{0x01, 0x02, 0, g_hwnd};
     if (!RegisterRawInputDevices(&rid, 1, sizeof rid)) { Toast(L"Não foi possível iniciar o teste", 2); return; }
     g_pollTimes.clear();
     g_pollTimes.reserve(40000);
@@ -1682,15 +1616,14 @@ static void PollStart() {
     StartAnim();
 }
 
-// Polling = 1 / mediana do intervalo entre relatórios do mouse em movimento
 static int PollRate(size_t from) {
     if (g_pollTimes.size() < from + 20) return 0;
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
     std::vector<double> dts;
     for (size_t i = from + 1; i < g_pollTimes.size(); ++i) {
-        double dt = (g_pollTimes[i] - g_pollTimes[i - 1]) * 1e6 / f.QuadPart;   // µs
-        if (dt > 50 && dt < 20000) dts.push_back(dt);   // ignora pausas do movimento
+        double dt = (g_pollTimes[i] - g_pollTimes[i - 1]) * 1e6 / f.QuadPart;
+        if (dt > 50 && dt < 20000) dts.push_back(dt);
     }
     if (dts.size() < 10) return 0;
     std::nth_element(dts.begin(), dts.begin() + dts.size() / 2, dts.end());
@@ -1735,7 +1668,6 @@ static bool ReadClipboardText(std::wstring& out) {
     return ok;
 }
 
-// --- Auto-update (GitHub Releases)
 static DWORD WINAPI UpdateThread(LPVOID manual) {
     UpdateInfo info;
     if (!CheckForUpdate(info)) {
@@ -1757,12 +1689,11 @@ static void StartUpdateCheck(bool manual) {
     StartAnim();
 }
 
-// Troca o .exe e reinicia — só quando nada está sendo aplicado
 static void InstallPendingUpdate() {
     if (g_updPendingPath.empty() || g_busy) return;
     std::wstring path = g_updPendingPath;
     g_updPendingPath.clear();
-    if (g_mutex) { CloseHandle(g_mutex); g_mutex = nullptr; }   // libera para a nova versão abrir
+    if (g_mutex) { CloseHandle(g_mutex); g_mutex = nullptr; }
     if (InstallUpdateAndRestart(path)) {
         DestroyWindow(g_hwnd);
     } else {
@@ -1783,6 +1714,24 @@ static void OnClick(int id) {
         return;
     }
     if (id >= ID_SWATCH && id < ID_SWATCH + kThemeCount) { SetTheme(id - ID_SWATCH); return; }
+    if (id == ID_COLOR_PICK) {
+        static COLORREF custom[16] = {};
+        Theme cur = CurrentTheme();
+        CHOOSECOLORW cc{};
+        cc.lStructSize = sizeof cc;
+        cc.hwndOwner = g_hwnd;
+        cc.rgbResult = RGB(cur.a.GetR(), cur.a.GetG(), cur.a.GetB());
+        cc.lpCustColors = custom;
+        cc.Flags = CC_FULLOPEN | CC_RGBINIT | CC_ANYCOLOR;
+        g_mx = g_my = -1;
+        if (ChooseColorW(&cc)) {
+            g_customColor = (GetRValue(cc.rgbResult) << 16) | (GetGValue(cc.rgbResult) << 8) | GetBValue(cc.rgbResult);
+            SaveAppDword(L"ThemeCustom", g_customColor);
+            SetTheme(kThemeCount);
+            Toast(L"Cor personalizada aplicada", 1);
+        }
+        return;
+    }
     if (id == ID_RESET_COLOR) { SetTheme(0); Toast(L"Cores originais restauradas", 1); return; }
     if (id == ID_SITE || id == ID_SITE_SIDE || id == ID_SITE_BADGE) {
         ShellExecuteW(nullptr, L"open", L"explorer.exe", kSiteUrl, nullptr, SW_SHOWNORMAL);
@@ -1820,7 +1769,6 @@ static void OnClick(int id) {
         }
         return;
     }
-    // Display (não usa o worker: é instantâneo)
     if (id >= ID_PRESET && id < ID_PRESET + kPresetCount) {
         const Preset& p = kPresets[id - ID_PRESET];
         g_disp = {p.sat, p.temp, p.gam};
@@ -1835,7 +1783,6 @@ static void OnClick(int id) {
         SliderChanged(k, true);
         return;
     }
-    // PvP: teste de polling e servidor
     if (id == ID_POLL && !g_pollActive) { PollStart(); return; }
     if (id == ID_PASTE) {
         std::wstring clip, host;
@@ -1853,15 +1800,11 @@ static void OnClick(int id) {
         Toast(std::wstring(L"Servidor salvo: ") + b, 1);
         return;
     }
-    // FiveM: opções são preferências (instantâneas)
-    if (id >= ID_FMOPT && id < ID_FMOPT + 4) {
-        bool* vals[4] = {&g_fivem.closeApps, &g_fivem.cleanCache, &g_fivem.recommended, &g_fivem.autoBoost};
-        const wchar_t* names[4] = {L"FECHAR APPS", L"LIMPAR RAM E CACHE", L"OTIMIZAÇÕES RECOMENDADAS", L"BOOST AUTOMÁTICO"};
-        int i = id - ID_FMOPT;
-        *vals[i] = !*vals[i];
+    if (id == ID_FMOPT) {
+        g_fivem.autoBoost = !g_fivem.autoBoost;
         FiveMSaveOpts();
-        if (i == 3) UpdateBoostTimer();
-        Toast(std::wstring(names[i]) + (*vals[i] ? L" · Selecionado!" : L" · Removido"), 1);
+        UpdateBoostTimer();
+        Toast(g_fivem.autoBoost ? L"BOOST AUTOMÁTICO · Selecionado!" : L"BOOST AUTOMÁTICO · Removido", 1);
         return;
     }
     if (g_busy) return;
@@ -1887,7 +1830,8 @@ static void OnClick(int id) {
     }
     if (id >= ID_SVC && id < ID_SVC + g_serviceCount) {
         int i = id - ID_SVC;
-        if (g_svcState[i] != SVC_RUNNING) RunJob(new Job{JOB_SVC, 0, i, true, nullptr, false, L""});   // só reativa
+        if (g_svcState[i] == SVC_RUNNING) Toast(std::wstring(g_services[i].name) + L" está ativo · não é possível desativar", 3);
+        else RunJob(new Job{JOB_SVC, 0, i, true, nullptr, false, L""});
         return;
     }
     if (id >= ID_TOOL && id < ID_TOOL + TOOL_COUNT) { RunJob(new Job{JOB_TOOL, 0, id - ID_TOOL, true, nullptr, false, L""}); return; }
@@ -1898,7 +1842,6 @@ static void OnClick(int id) {
         RunJob(j);
         return;
     }
-    if (id == ID_FIVEM_LAUNCH) { RunJob(new Job{JOB_FIVEM, 0, -1, true, nullptr, false, L""}); return; }
     if (id == ID_DISABLE_ALL) { g_modal = g_modalShown = MODAL_DISABLE_ALL; return; }
     if (id == ID_REVERT_ALL)  { g_modal = g_modalShown = MODAL_REVERT; return; }
 }
@@ -1915,7 +1858,7 @@ static bool TickAnim() {
         for (auto& t : *vec) approach(t.anim, t.on ? 1.f : 0.f, 0.22f);
     for (auto& kv : g_hov) approach(kv.second, MouseIn(kv.first) ? 1.f : 0.f, 0.24f);
 
-    const Theme& th = kThemes[g_theme];
+    Theme th = CurrentTheme();
     float ta[3] = {(float)th.a.GetR(), (float)th.a.GetG(), (float)th.a.GetB()};
     float tb[3] = {(float)th.b.GetR(), (float)th.b.GetG(), (float)th.b.GetB()};
     for (int i = 0; i < 3; ++i) {
@@ -1939,9 +1882,6 @@ static bool TickAnim() {
     return moving;
 }
 
-// ============================================================
-//  Janela
-// ============================================================
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_NCHITTEST: {
@@ -1970,7 +1910,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_mx = GET_X_LPARAM(lp) / g_scale;
         g_my = GET_Y_LPARAM(lp) / g_scale;
         if (g_drag >= 0) { SliderSet(g_drag, g_mx); return 0; }
-        {   // só anima/redesenha quando o conjunto de elementos sob o mouse muda
+        {
             static unsigned long long lastSig = 0;
             unsigned long long sig = 1469598103934665603ULL;
             for (auto& h : g_hits)
@@ -2056,7 +1996,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         delete p;
         g_updChecking = false;
         Toast(L"Atualização baixada · reiniciando o app...", 1);
-        if (!g_busy && !g_modal) InstallPendingUpdate();   // senão instala quando terminar o que está fazendo
+        if (!g_busy && !g_modal) InstallPendingUpdate();
         return 0;
     }
     case WM_APP_UPD_NONE:
@@ -2101,12 +2041,13 @@ static void InitState() {
     for (auto* vec : {&g_tw, &g_qk, &g_kb, &g_pv})
         for (auto& t : *vec) t.anim = t.on ? 1.f : 0.f;
     FiveMLoadOpts();
-    bool fv[4] = {g_fivem.closeApps, g_fivem.cleanCache, g_fivem.recommended, g_fivem.autoBoost};
-    for (int i = 0; i < 4; ++i) { g_fm[i].on = fv[i]; g_fm[i].anim = fv[i] ? 1.f : 0.f; }
+    g_fm[0].on = g_fivem.autoBoost;
+    g_fm[0].anim = g_fivem.autoBoost ? 1.f : 0.f;
     DisplayLoad();
     g_theme = (int)LoadAppDword(L"Theme", 0);
-    if (g_theme < 0 || g_theme >= kThemeCount) g_theme = 0;
-    const Theme& th = kThemes[g_theme];
+    g_customColor = LoadAppDword(L"ThemeCustom", 0xA855F7);
+    if (g_theme < 0 || g_theme > kThemeCount) g_theme = 0;
+    Theme th = CurrentTheme();
     g_acc[0] = th.a.GetR(); g_acc[1] = th.a.GetG(); g_acc[2] = th.a.GetB();
     g_acc2[0] = th.b.GetR(); g_acc2[1] = th.b.GetG(); g_acc2[2] = th.b.GetB();
     SysInfoInit();
@@ -2115,7 +2056,7 @@ static void InitState() {
 #ifndef PF_NO_WINMAIN
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     bool justUpdated = wcsstr(GetCommandLineW(), L"--updated") != nullptr;
-    if (justUpdated) Sleep(800);   // dá tempo da versão anterior fechar
+    if (justUpdated) Sleep(800);
     CleanupOldVersion();
     g_mutex = CreateMutexW(nullptr, TRUE, L"PrecisionFix.SingleInstance");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -2158,7 +2099,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"Precision Fix", WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
                              x, y, ww, wh, nullptr, nullptr, hInst, nullptr);
 
-    DWORD corner = 2;  // DWMWCP_ROUND (Windows 11)
+    DWORD corner = 2;
     DwmSetWindowAttribute(g_hwnd, 33, &corner, sizeof corner);
     COLORREF border = RGB(30, 33, 38);
     DwmSetWindowAttribute(g_hwnd, 34, &border, sizeof border);
@@ -2168,14 +2109,12 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     ShowWindow(g_hwnd, nShow);
     UpdateWindow(g_hwnd);
 
-    if (!DisplayIsNeutral()) DisplayApply();   // reaplica as cores salvas
+    if (!DisplayIsNeutral()) DisplayApply();
     UpdateBoostTimer();
 
     if (justUpdated) Toast(L"Precision Fix atualizado para a versão " + AppVersion(), 1);
-    StartUpdateCheck(false);   // auto-update: verifica a última release no GitHub
+    StartUpdateCheck(false);
 
-    // Primeira execução: abre o site da CodeLabs no navegador padrão.
-    // Via explorer.exe para o navegador não herdar o modo administrador.
     if (LoadAppDword(L"FirstRunDone", 0) == 0) {
         SaveAppDword(L"FirstRunDone", 1);
         ShellExecuteW(nullptr, L"open", L"explorer.exe", kSiteUrl, nullptr, SW_SHOWNORMAL);
