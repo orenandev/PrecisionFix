@@ -39,6 +39,7 @@ Mouse 1:1, teclado sem atraso, timer de 0.5 ms, prioridade para o jogo, teste de
 | Opção | O que faz |
 |---|---|
 | Mouse Precision | Desliga "Aumentar precisão do ponteiro" (aceleração do Windows) |
+| Performance Boost | Ativa o plano de energia de Alto Desempenho |
 | Tracking | Ajusta a prioridade de threads da CPU (`Win32PrioritySeparation`) |
 | Sensi | Aplica a curva MarkC 1:1 no registro |
 | Flick | Tempo de hover mínimo e desativa a suspensão seletiva de USB |
@@ -48,23 +49,24 @@ Mouse 1:1, teclado sem atraso, timer de 0.5 ms, prioridade para o jogo, teste de
 | Sensi X/Y | Velocidade do ponteiro 6/11 (multiplicador 1.0), sem aceleração |
 | Flags | Prioridade de GPU e de agendamento para jogos (MMCSS) |
 | Accessibility | Bloqueia os atalhos de StickyKeys e afins |
+| Boost FiveM | Prioridade alta de CPU e I/O para GTA V / FiveM |
 
 ### Teclado Fix
 Perfil de precisão (`KeyboardDataQueueSize`), Filter Keys off, atraso de repetição mínimo, taxa de repetição máxima, prioridade em jogo (`SystemResponsiveness`), prioridade do driver de teclado, suspensão USB off e Sticky/Toggle Keys off.
 
 ### FiveM
+- **Abrir FiveM** já preparando o PC: fecha apps em segundo plano (Discord e Steam ficam), limpa RAM e cache e aplica as otimizações recomendadas.
 - **Boost automático:** prioridade alta no processo do jogo enquanto o painel estiver aberto.
 - **Limpar cache do FiveM:** apaga tudo em `data` **menos a `game-storage`** (você não precisa baixar o jogo de novo).
-- Limpar logs e crashes, cache de DNS, arquivos temporários e abrir a pasta do FiveM.
+- Limpar logs e crashes, cache de DNS, arquivos temporários, fechar o FiveM travado e abrir a pasta do FiveM.
 
 ### PvP
 - **Teste de conexão:** ping, jitter e perda até Cloudflare, Google e **o seu servidor** (copie o `IP:porta` e clique em *Colar IP*).
 - **Polling rate do mouse:** mede quantos Hz o mouse entrega de verdade.
 - **Ajustes de FPS e rede:** Game DVR off, Modo de Jogo, agendamento de GPU (HAGS) e prioridade de pacotes (QoS DSCP 46) para o FiveM.
 
-### Serviços, Display e Configurações
-- **Serviços:** mostra quais serviços do Windows estão ativos e permite reativar os que estiverem parados (os ativos ficam travados, sem opção de desativar).
-- **Configurações:** cor de destaque pronta ou qualquer cor pela paleta (clique no quadrado de cor).
+### Serviços e Display
+- **Serviços:** mostra quais serviços do Windows estão ativos e permite reativá-los.
 - **Display:** presets (Padrão, Vibrante, Cinema, FiveM Night, Competitivo) e ajuste fino de saturação, temperatura de cor e gama.
 
 <div align="center">

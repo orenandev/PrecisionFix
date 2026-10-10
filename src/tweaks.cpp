@@ -6,6 +6,10 @@
 #include <cstring>
 #include <powrprof.h>
 
+// ============================================================
+//  Helpers de registro / processos
+// ============================================================
+
 static const wchar_t* kApp = L"Software\\PrecisionFix";
 
 static bool RegSetDword(HKEY root, const wchar_t* path, const wchar_t* name, DWORD v) {
@@ -108,6 +112,9 @@ static bool EnablePrivilege(const wchar_t* priv) {
 
 static const UINT SPI_SAVE = SPIF_UPDATEINIFILE | SPIF_SENDCHANGE;
 
+// ============================================================
+//  1. Tracking — prioridade de threads de CPU
+// ============================================================
 static const wchar_t* kPrio = L"SYSTEM\\CurrentControlSet\\Control\\PriorityControl";
 
 static bool TrackingOn() {
@@ -118,6 +125,9 @@ static bool TrackingApply(bool on) {
     return RegSetDword(HKEY_LOCAL_MACHINE, kPrio, L"Win32PrioritySeparation", on ? 0x26 : 0x02);
 }
 
+// ============================================================
+//  2. Sensi — curva MarkC 1:1 (sem aceleração)
+// ============================================================
 static const wchar_t* kMouse = L"Control Panel\\Mouse";
 
 static const BYTE kMarkCX[40] = {
@@ -150,6 +160,9 @@ static bool SensiApply(bool on) {
     return ok;
 }
 
+// ============================================================
+//  3. Flick — hover time + suspensão seletiva USB
+// ============================================================
 static const wchar_t* kUsbSvc = L"SYSTEM\\CurrentControlSet\\Services\\USB";
 static const wchar_t* kUsbSub = L"2a737441-1930-4402-8d77-b2bebba308a3";
 static const wchar_t* kUsbSet = L"48e6b7a6-50f5-4782-a5d4-53bb8f07e226";
@@ -174,6 +187,9 @@ static bool FlickApply(bool on) {
     return ok;
 }
 
+// ============================================================
+//  4. Boost FiveM — prioridade de CPU/IO para GTA/FiveM
+// ============================================================
 static const wchar_t* kIfeo = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\";
 static const wchar_t* kGameExes[] = {
     L"GTA5.exe", L"FiveM.exe", L"FiveM_GTAProcess.exe",
@@ -194,13 +210,14 @@ static bool BoostApply(bool on) {
     for (const wchar_t* exe : kGameExes) {
         std::wstring p = std::wstring(kIfeo) + exe + L"\\PerfOptions";
         if (on) {
-            ok &= RegSetDword(HKEY_LOCAL_MACHINE, p.c_str(), L"CpuPriorityClass", 3);
-            ok &= RegSetDword(HKEY_LOCAL_MACHINE, p.c_str(), L"IoPriority", 3);
+            ok &= RegSetDword(HKEY_LOCAL_MACHINE, p.c_str(), L"CpuPriorityClass", 3); // High
+            ok &= RegSetDword(HKEY_LOCAL_MACHINE, p.c_str(), L"IoPriority", 3);       // High
         } else {
             RegDeleteTreeW(HKEY_LOCAL_MACHINE, p.c_str());
             RegDeleteKeyExW(HKEY_LOCAL_MACHINE, p.c_str(), KEY_WOW64_64KEY, 0);
         }
     }
+    // Aplica também nos processos que já estão rodando
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap != INVALID_HANDLE_VALUE) {
         PROCESSENTRY32W pe{};
@@ -219,6 +236,9 @@ static bool BoostApply(bool on) {
     return ok;
 }
 
+// ============================================================
+//  5. 0.5ms — timers de kernel via bcdedit
+// ============================================================
 static const wchar_t* kKernel = L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel";
 
 static bool TimerOn() {
@@ -250,10 +270,13 @@ void SetRuntimeTimerResolution(bool on) {
     auto fn = (NtSetTimerResolution_t)(void*)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSetTimerResolution");
     if (!fn) return;
     ULONG cur = 0;
-    fn(5000, on ? TRUE : FALSE, &cur);
+    fn(5000, on ? TRUE : FALSE, &cur); // 5000 * 100ns = 0.5ms
     active = on;
 }
 
+// ============================================================
+//  6. Registros Mouse — MouseDataQueueSize
+// ============================================================
 static const wchar_t* kMouclass = L"SYSTEM\\CurrentControlSet\\Services\\mouclass\\Parameters";
 
 static bool QueueOn() {
@@ -264,6 +287,9 @@ static bool QueueApply(bool on) {
     return RegSetDword(HKEY_LOCAL_MACHINE, kMouclass, L"MouseDataQueueSize", on ? 20 : 100);
 }
 
+// ============================================================
+//  7. Islc — sem paginação de drivers + limpa standby list
+// ============================================================
 static const wchar_t* kMem = L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management";
 
 typedef LONG (NTAPI* NtSetSystemInformation_t)(ULONG, PVOID, ULONG);
@@ -273,9 +299,9 @@ void PurgeMemoryCaches() {
     auto fn = (NtSetSystemInformation_t)(void*)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSetSystemInformation");
     if (!fn) return;
     const ULONG SystemMemoryListInformation = 80;
-    ULONG cmd = 3;
+    ULONG cmd = 3; // MemoryFlushModifiedList
     fn(SystemMemoryListInformation, &cmd, sizeof cmd);
-    cmd = 4;
+    cmd = 4;       // MemoryPurgeStandbyList
     fn(SystemMemoryListInformation, &cmd, sizeof cmd);
 }
 
@@ -289,6 +315,9 @@ static bool IslcApply(bool on) {
     return ok;
 }
 
+// ============================================================
+//  8. Sensi X/Y — velocidade 6/11 (multiplicador 1.0) linear
+// ============================================================
 static bool SensiXYOn() {
     DWORD flag = 0;
     RegGetDword(HKEY_CURRENT_USER, kApp, L"SensiXY", flag);
@@ -318,7 +347,7 @@ static bool SensiXYApply(bool on) {
         RegGetDword(HKEY_CURRENT_USER, kApp, L"PrevMouse2", c);
         if (speed < 1 || speed > 20) speed = 10;
         ok &= SystemParametersInfoW(SPI_SETMOUSESPEED, 0, (PVOID)(INT_PTR)speed, SPI_SAVE) != FALSE;
-        if (!SensiOn()) {
+        if (!SensiOn()) { // não reativa aceleração se o "Sensi" ainda estiver ligado
             int m[3] = {(int)a, (int)b, (int)c};
             SystemParametersInfoW(SPI_SETMOUSE, 0, m, SPI_SAVE);
         }
@@ -327,6 +356,41 @@ static bool SensiXYApply(bool on) {
     return ok;
 }
 
+// ============================================================
+//  9. FilterKeys — remove atraso de repetição do teclado
+// ============================================================
+static bool FilterOn() {
+    FILTERKEYS fk{};
+    fk.cbSize = sizeof fk;
+    SystemParametersInfoW(SPI_GETFILTERKEYS, sizeof fk, &fk, 0);
+    return (fk.dwFlags & FKF_FILTERKEYSON) && fk.iDelayMSec <= 200 && fk.iWaitMSec == 0;
+}
+static bool FilterApply(bool on) {
+    FILTERKEYS fk{};
+    fk.cbSize = sizeof fk;
+    SystemParametersInfoW(SPI_GETFILTERKEYS, sizeof fk, &fk, 0);
+    if (on) {
+        fk.dwFlags = (fk.dwFlags | FKF_FILTERKEYSON | FKF_AVAILABLE) & ~(FKF_INDICATOR | FKF_CLICKON);
+        fk.iWaitMSec = 0;     // DelayBeforeAcceptance
+        fk.iDelayMSec = 200;  // AutoRepeatDelay
+        fk.iRepeatMSec = 10;  // AutoRepeatRate
+        fk.iBounceMSec = 0;   // BounceTime
+    } else {
+        fk.dwFlags &= ~FKF_FILTERKEYSON;
+        fk.iWaitMSec = 1000;
+        fk.iDelayMSec = 1000;
+        fk.iRepeatMSec = 500;
+        fk.iBounceMSec = 0;
+    }
+    bool ok = SystemParametersInfoW(SPI_SETFILTERKEYS, sizeof fk, &fk, SPI_SAVE) != FALSE;
+    SystemParametersInfoW(SPI_SETKEYBOARDDELAY, on ? 0 : 1, nullptr, SPI_SAVE);
+    SystemParametersInfoW(SPI_SETKEYBOARDSPEED, 31, nullptr, SPI_SAVE);
+    return ok;
+}
+
+// ============================================================
+// 10. Flags — prioridade de GPU para jogos (MMCSS)
+// ============================================================
 static const wchar_t* kGames = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile\\Tasks\\Games";
 
 static bool FlagsOn() {
@@ -342,6 +406,9 @@ static bool FlagsApply(bool on) {
     return ok;
 }
 
+// ============================================================
+// 11. Accessibility — bloqueia StickyKeys e atalhos
+// ============================================================
 static bool AccessOn() {
     STICKYKEYS sk{}; sk.cbSize = sizeof sk;
     TOGGLEKEYS tk{}; tk.cbSize = sizeof tk;
@@ -373,6 +440,12 @@ static bool AccessApply(bool on) {
     return ok;
 }
 
+
+// ============================================================
+//  Ações rápidas do Dashboard
+// ============================================================
+
+// Precisão do Mouse (1:1) — remove a aceleração do Windows
 static bool MouseOneOn() {
     int m[3] = {};
     SystemParametersInfoW(SPI_GETMOUSE, 0, m, 0);
@@ -383,6 +456,7 @@ static bool MouseOneApply(bool on) {
     return SystemParametersInfoW(SPI_SETMOUSE, 0, on ? off : def, SPI_SAVE) != FALSE;
 }
 
+// Redução de Latência — Nagle/ACK do TCP + NetworkThrottlingIndex
 static const wchar_t* kIfaces = L"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces";
 static const wchar_t* kMMSys  = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile";
 
@@ -415,6 +489,7 @@ static bool NetApply(bool on) {
     return ok;
 }
 
+// Performance Máxima — plano de energia Alto Desempenho
 static const GUID kHighPerf = {0x8c5e7fda, 0xe8bf, 0x4a96, {0x9a, 0x85, 0xa6, 0xe2, 0x3a, 0x8c, 0x63, 0x5c}};
 static const GUID kBalanced = {0x381b4222, 0xf694, 0x41f0, {0x96, 0x85, 0xff, 0x5b, 0xb2, 0x60, 0xdf, 0x2e}};
 static const GUID kOwnHigh  = {0x50524543, 0x4953, 0x4f4e, {0x46, 0x49, 0x58, 0x00, 0x00, 0x00, 0x00, 0x01}};
@@ -436,6 +511,7 @@ static bool PerfApply(bool on) {
             LocalFree(cur);
         }
         if (PowerSetActiveScheme(nullptr, &kHighPerf) == ERROR_SUCCESS) return true;
+        // Notebooks com Modern Standby escondem o plano: cria uma cópia própria dele
         RunHidden(SysExe(L"powercfg.exe") + L" -duplicatescheme 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c " + kOwnHighStr);
         return PowerSetActiveScheme(nullptr, &kOwnHigh) == ERROR_SUCCESS;
     }
@@ -451,6 +527,9 @@ static bool PerfApply(bool on) {
     return PowerSetActiveScheme(nullptr, &kBalanced) == ERROR_SUCCESS;
 }
 
+// ============================================================
+//  Preferências / util
+// ============================================================
 DWORD LoadAppDword(const wchar_t* name, DWORD def) {
     DWORD v = def;
     return RegGetDword(HKEY_CURRENT_USER, kApp, name, v) ? v : def;
@@ -467,6 +546,9 @@ bool IsElevated() {
     return r;
 }
 
+// ============================================================
+//  Tabelas
+// ============================================================
 const wchar_t* g_sections[] = {
     L"MOTOR DE MOVIMENTO",
     L"LATÊNCIA DO SISTEMA",
@@ -510,8 +592,12 @@ const int g_quickCount = sizeof(g_quick) / sizeof(g_quick[0]);
 
 bool IsTimerTweak(int idx) { return idx >= 0 && idx < g_tweakCount && g_tweaks[idx].apply == TimerApply; }
 
+// ============================================================
+//  TecladoFix
+// ============================================================
 static const wchar_t* kKbdclass = L"SYSTEM\\CurrentControlSet\\Services\\kbdclass\\Parameters";
 
+// Perfil de Precisão — fila de dados do teclado menor (resposta mais imediata)
 static bool KbdQueueOn() {
     DWORD v = 0;
     return RegGetDword(HKEY_LOCAL_MACHINE, kKbdclass, L"KeyboardDataQueueSize", v) && v == 20;
@@ -520,6 +606,7 @@ static bool KbdQueueApply(bool on) {
     return RegSetDword(HKEY_LOCAL_MACHINE, kKbdclass, L"KeyboardDataQueueSize", on ? 20 : 100);
 }
 
+// Desativar Filter Keys — desliga o recurso e o atalho (segurar Shift direito 8s)
 static bool NoFilterOn() {
     FILTERKEYS fk{};
     fk.cbSize = sizeof fk;
@@ -535,6 +622,7 @@ static bool NoFilterApply(bool on) {
     return SystemParametersInfoW(SPI_SETFILTERKEYS, sizeof fk, &fk, SPI_SAVE) != FALSE;
 }
 
+// Atraso de Repetição Mínimo — KeyboardDelay 0 (padrão 1)
 static bool MinDelayOn() {
     int d = 1;
     SystemParametersInfoW(SPI_GETKEYBOARDDELAY, 0, &d, 0);
@@ -544,6 +632,7 @@ static bool MinDelayApply(bool on) {
     return SystemParametersInfoW(SPI_SETKEYBOARDDELAY, on ? 0 : 1, nullptr, SPI_SAVE) != FALSE;
 }
 
+// Taxa de Repetição Máxima — KeyboardSpeed 31
 static bool MaxRateOn() {
     DWORD s = 0;
     SystemParametersInfoW(SPI_GETKEYBOARDSPEED, 0, &s, 0);
@@ -562,6 +651,7 @@ static bool MaxRateApply(bool on) {
     return SystemParametersInfoW(SPI_SETKEYBOARDSPEED, prev, nullptr, SPI_SAVE) != FALSE;
 }
 
+// Prioridade de Processo em Jogo — MMCSS SystemResponsiveness 0 (padrão 20)
 static bool GamePrioOn() {
     DWORD v = 20;
     return RegGetDword(HKEY_LOCAL_MACHINE, kMMSys, L"SystemResponsiveness", v) && v == 0;
@@ -570,6 +660,7 @@ static bool GamePrioApply(bool on) {
     return RegSetDword(HKEY_LOCAL_MACHINE, kMMSys, L"SystemResponsiveness", on ? 0 : 20);
 }
 
+// Aplicar Ajustes de Registro — prioridade máxima da thread do driver de teclado
 static bool KbdRegOn() {
     DWORD v = 0;
     return RegGetDword(HKEY_LOCAL_MACHINE, kKbdclass, L"ThreadPriority", v) && v == 31;
@@ -580,6 +671,7 @@ static bool KbdRegApply(bool on) {
     return true;
 }
 
+// Suspensão USB Seletiva Off
 static bool UsbOn() {
     DWORD v = 0;
     return RegGetDword(HKEY_LOCAL_MACHINE, kUsbSvc, L"DisableSelectiveSuspend", v) && v == 1;
@@ -596,6 +688,12 @@ static bool UsbApply(bool on) {
     return ok;
 }
 
+
+// ============================================================
+//  PvP — ajustes de FPS e rede
+// ============================================================
+
+// Game DVR / captura do Xbox Game Bar (grava em segundo plano e custa FPS)
 static const wchar_t* kGameCfg = L"System\\GameConfigStore";
 static const wchar_t* kGameDvr = L"Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR";
 
@@ -610,10 +708,11 @@ static bool DvrApply(bool on) {
     return ok;
 }
 
+// Modo de Jogo do Windows
 static const wchar_t* kGameBar = L"Software\\Microsoft\\GameBar";
 static bool GameModeOn() {
     DWORD v = 1;
-    RegGetDword(HKEY_CURRENT_USER, kGameBar, L"AutoGameModeEnabled", v);
+    RegGetDword(HKEY_CURRENT_USER, kGameBar, L"AutoGameModeEnabled", v);  // ausente = ligado (padrão)
     return v == 1;
 }
 static bool GameModeApply(bool on) {
@@ -621,6 +720,7 @@ static bool GameModeApply(bool on) {
     return RegSetDword(HKEY_CURRENT_USER, kGameBar, L"AutoGameModeEnabled", 0);
 }
 
+// Agendamento de GPU acelerado por hardware (HAGS)
 static const wchar_t* kGfx = L"SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers";
 static bool HagsOn() {
     DWORD v = 0;
@@ -628,6 +728,7 @@ static bool HagsOn() {
 }
 static bool HagsApply(bool on) { return RegSetDword(HKEY_LOCAL_MACHINE, kGfx, L"HwSchMode", on ? 2 : 1); }
 
+// QoS: marca os pacotes do FiveM com DSCP 46 (prioridade em roteadores com QoS)
 static const wchar_t* kQos = L"SOFTWARE\\Policies\\Microsoft\\Windows\\QoS\\";
 static const wchar_t* kQosNla = L"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\QoS";
 
@@ -655,6 +756,7 @@ static bool QosApply(bool on) {
             RegDeleteKeyExW(HKEY_LOCAL_MACHINE, p.c_str(), KEY_WOW64_64KEY, 0);
         }
     }
+    // Em PCs fora de domínio o Windows só aplica QoS com esta opção
     if (on) RegSetSz(HKEY_LOCAL_MACHINE, kQosNla, L"Do not use NLA", L"1");
     return ok;
 }
@@ -670,6 +772,7 @@ Tweak g_pvp[] = {
       L"Política QoS DSCP 46 para FiveM/GTA5",             -1, true,  QosOn,      QosApply      },
 };
 const int g_pvpCount = sizeof(g_pvp) / sizeof(g_pvp[0]);
+// Ordem: 4 da coluna esquerda, depois 4 da direita
 Tweak g_kbd[] = {
     { L"Perfil de Precisão",          L"Reduz a fila de dados do teclado para resposta imediata.",
       L"KeyboardDataQueueSize = 20",                   -1, true,  KbdQueueOn, KbdQueueApply },

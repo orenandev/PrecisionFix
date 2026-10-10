@@ -8,6 +8,7 @@
 #include <cwchar>
 #include <algorithm>
 
+
 static bool FileExists(const std::wstring& p) {
     DWORD a = GetFileAttributesW(p.c_str());
     return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
@@ -22,19 +23,58 @@ static std::wstring LocalAppData() {
     return buf;
 }
 
+// ============================================================
+//  FiveM
+// ============================================================
 FiveMOpts g_fivem;
 
 void FiveMLoadOpts() {
-    g_fivem.autoBoost = LoadAppDword(L"FiveM_AutoBoost", 0) != 0;
+    g_fivem.closeApps   = LoadAppDword(L"FiveM_CloseApps", 0) != 0;
+    g_fivem.cleanCache  = LoadAppDword(L"FiveM_CleanCache", 0) != 0;
+    g_fivem.recommended = LoadAppDword(L"FiveM_Recommended", 0) != 0;
+    g_fivem.autoBoost   = LoadAppDword(L"FiveM_AutoBoost", 0) != 0;
 }
 void FiveMSaveOpts() {
+    SaveAppDword(L"FiveM_CloseApps", g_fivem.closeApps);
+    SaveAppDword(L"FiveM_CleanCache", g_fivem.cleanCache);
+    SaveAppDword(L"FiveM_Recommended", g_fivem.recommended);
     SaveAppDword(L"FiveM_AutoBoost", g_fivem.autoBoost);
+}
+
+static std::wstring FiveMExe() { return LocalAppData() + L"\\FiveM\\FiveM.exe"; }
+bool FiveMInstalled() { return FileExists(FiveMExe()); }
+
+// Apps de segundo plano que pesam durante o jogo (Discord e Steam ficam abertos)
+static const wchar_t* kBackgroundApps[] = {
+    L"chrome.exe", L"msedge.exe", L"firefox.exe", L"opera.exe", L"brave.exe",
+    L"Spotify.exe", L"OneDrive.exe", L"Teams.exe", L"ms-teams.exe", L"EpicGamesLauncher.exe",
+};
+
+static int CloseBackgroundApps() {
+    int closed = 0;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32W pe{};
+    pe.dwSize = sizeof pe;
+    for (BOOL m = Process32FirstW(snap, &pe); m; m = Process32NextW(snap, &pe)) {
+        for (const wchar_t* app : kBackgroundApps) {
+            if (_wcsicmp(pe.szExeFile, app) != 0) continue;
+            HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+            if (h) {
+                if (TerminateProcess(h, 0)) ++closed;
+                CloseHandle(h);
+            }
+            break;
+        }
+    }
+    CloseHandle(snap);
+    return closed;
 }
 
 static void DeleteTree(const std::wstring& path) {
     if (!DirExists(path) && !FileExists(path)) return;
     std::wstring from = path;
-    from.push_back(L'\0');
+    from.push_back(L'\0');  // SHFileOperation exige lista terminada em \0\0
     SHFILEOPSTRUCTW op{};
     op.wFunc = FO_DELETE;
     op.pFrom = from.c_str();
@@ -50,7 +90,7 @@ static ULONGLONG DirSize(const std::wstring& dir) {
     do {
         std::wstring n = fd.cFileName;
         if (n == L"." || n == L"..") continue;
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;   // não segue links
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) total += DirSize(dir + L"\\" + n);
         else total += ((ULONGLONG)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
     } while (FindNextFileW(f, &fd));
@@ -58,6 +98,7 @@ static ULONGLONG DirSize(const std::wstring& dir) {
     return total;
 }
 
+// Pasta do FiveM.app (o Explorer mostra como "FiveM Application Data")
 static std::wstring FiveMAppDir() {
     std::wstring base = LocalAppData() + L"\\FiveM\\";
     if (DirExists(base + L"FiveM.app")) return base + L"FiveM.app";
@@ -65,6 +106,8 @@ static std::wstring FiveMAppDir() {
     return L"";
 }
 
+// Cache do FiveM: apaga tudo dentro de data\ MENOS game-storage (arquivos do jogo, vários GB).
+// Em instalações antigas os arquivos do jogo ficavam em data\cache\game — esse também é mantido.
 static bool CleanFiveMCache(ULONGLONG* freed = nullptr) {
     std::wstring app = FiveMAppDir();
     if (app.empty()) return false;
@@ -79,7 +122,7 @@ static bool CleanFiveMCache(ULONGLONG* freed = nullptr) {
             if (n == L"." || n == L".." || _wcsicmp(n.c_str(), L"game-storage") == 0) continue;
             std::wstring p = data + L"\\" + n;
             if (_wcsicmp(n.c_str(), L"cache") == 0 && DirExists(p + L"\\game")) {
-                WIN32_FIND_DATAW cd;
+                WIN32_FIND_DATAW cd;   // cache legado: apaga tudo menos cache\game
                 HANDLE c = FindFirstFileW((p + L"\\*").c_str(), &cd);
                 if (c != INVALID_HANDLE_VALUE) {
                     do {
@@ -102,11 +145,16 @@ static bool CleanFiveMCache(ULONGLONG* freed = nullptr) {
     return true;
 }
 
+// ---------------- Ferramentas do FiveM ----------------
 static std::wstring FormatSize(ULONGLONG b) {
     wchar_t buf[64];
     if (b >= 1073741824ULL) swprintf(buf, 64, L"%.2f GB", b / 1073741824.0);
     else swprintf(buf, 64, L"%.1f MB", b / 1048576.0);
     return buf;
+}
+
+static bool IsFiveMProcess(const wchar_t* exe) {
+    return _wcsnicmp(exe, L"FiveM", 5) == 0 || _wcsicmp(exe, L"GTA5.exe") == 0;
 }
 
 static ULONGLONG CleanDirContents(const std::wstring& dir) {
@@ -120,7 +168,7 @@ static ULONGLONG CleanDirContents(const std::wstring& dir) {
             if (n == L"." || n == L"..") continue;
             std::wstring p = dir + L"\\" + n;
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) DeleteTree(p);
-            else DeleteFileW(p.c_str());
+            else DeleteFileW(p.c_str());   // arquivos em uso são ignorados
         } while (FindNextFileW(f, &fd));
         FindClose(f);
     }
@@ -160,6 +208,22 @@ bool FiveMTool(int tool, std::wstring& msg) {
         msg = L"Arquivos temporários limpos · " + FormatSize(freed) + L" liberados";
         return true;
     }
+    case TOOL_KILL: {
+        int n = 0;
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W pe{};
+            pe.dwSize = sizeof pe;
+            for (BOOL m = Process32FirstW(snap, &pe); m; m = Process32NextW(snap, &pe)) {
+                if (!IsFiveMProcess(pe.szExeFile)) continue;
+                HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                if (h) { if (TerminateProcess(h, 0)) ++n; CloseHandle(h); }
+            }
+            CloseHandle(snap);
+        }
+        msg = n ? L"FiveM encerrado" : L"O FiveM não estava aberto";
+        return true;
+    }
     case TOOL_FOLDER: {
         std::wstring app = FiveMAppDir();
         if (app.empty()) { msg = L"Pasta do FiveM não encontrada"; return false; }
@@ -169,6 +233,43 @@ bool FiveMTool(int tool, std::wstring& msg) {
     }
     }
     return false;
+}
+
+static void ApplyRecommended() {
+    const wchar_t* names[] = {L"Tracking", L"Flags", L"Boost Fivem"};
+    for (const wchar_t* n : names) {
+        int i = FindTweak(n);
+        if (i >= 0 && !g_tweaks[i].isOn()) g_tweaks[i].apply(true);
+    }
+    for (int i = 0; i < g_quickCount; ++i)   // Performance Máxima (plano de energia)
+        if (wcscmp(g_quick[i].name, L"Performance Máxima") == 0 && !g_quick[i].isOn()) g_quick[i].apply(true);
+}
+
+bool FiveMPrepareAndLaunch(std::wstring& summary) {
+    summary.clear();
+    if (g_fivem.closeApps) {
+        int n = CloseBackgroundApps();
+        wchar_t b[64];
+        swprintf(b, 64, L"%d apps fechados", n);
+        summary += b;
+    }
+    if (g_fivem.cleanCache) {
+        PurgeMemoryCaches();
+        bool c = CleanFiveMCache();
+        if (!summary.empty()) summary += L" · ";
+        summary += c ? L"RAM e cache limpos" : L"RAM limpa";
+    }
+    if (g_fivem.recommended) {
+        ApplyRecommended();
+        if (!summary.empty()) summary += L" · ";
+        summary += L"otimizações aplicadas";
+    }
+    // Abre via explorer.exe para o FiveM NÃO herdar o modo administrador (o FiveM recusa rodar como admin)
+    std::wstring exe = FiveMExe();
+    HINSTANCE r;
+    if (FileExists(exe)) r = ShellExecuteW(nullptr, L"open", L"explorer.exe", exe.c_str(), nullptr, SW_SHOWNORMAL);
+    else                 r = ShellExecuteW(nullptr, L"open", L"explorer.exe", L"fivem://", nullptr, SW_SHOWNORMAL);
+    return (INT_PTR)r > 32;
 }
 
 void FiveMAutoBoostTick() {
@@ -189,6 +290,9 @@ void FiveMAutoBoostTick() {
     CloseHandle(snap);
 }
 
+// ============================================================
+//  Serviços
+// ============================================================
 ServiceItem g_services[] = {
     {L"DiagTrack",    L"Telemetria: envia dados de uso para a Microsoft",          SERVICE_AUTO_START},
     {L"DPS",          L"Política de diagnóstico: detecta e soluciona problemas",   SERVICE_AUTO_START},
@@ -233,17 +337,18 @@ bool ServiceSet(int i, bool enable) {
     if (!s) { CloseServiceHandle(scm); return false; }
     bool ok = true;
     if (!enable) {
+        // guarda o tipo de inicialização atual para restaurar depois
         DWORD need = 0;
         QueryServiceConfigW(s, nullptr, 0, &need);
         std::vector<BYTE> buf(need ? need : 1);
         auto* cfg = (QUERY_SERVICE_CONFIGW*)buf.data();
         if (need && QueryServiceConfigW(s, cfg, need, &need) && cfg->dwStartType != SERVICE_DISABLED)
-            SaveAppDword(SvcKey(i).c_str(), cfg->dwStartType + 1);
+            SaveAppDword(SvcKey(i).c_str(), cfg->dwStartType + 1);   // +1: 0 significa "nada salvo"
         ok = ChangeServiceConfigW(s, SERVICE_NO_CHANGE, SERVICE_DISABLED, SERVICE_NO_CHANGE,
                                   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) != FALSE;
         SERVICE_STATUS st{};
         ControlService(s, SERVICE_CONTROL_STOP, &st);
-        for (int t = 0; t < 25; ++t) {
+        for (int t = 0; t < 25; ++t) {   // espera até 5s parar
             SERVICE_STATUS_PROCESS ssp{};
             if (!QueryServiceStatusEx(s, SC_STATUS_PROCESS_INFO, (BYTE*)&ssp, sizeof ssp, &need) ||
                 ssp.dwCurrentState == SERVICE_STOPPED) break;
@@ -256,6 +361,7 @@ bool ServiceSet(int i, bool enable) {
         ok = ChangeServiceConfigW(s, SERVICE_NO_CHANGE, start, SERVICE_NO_CHANGE,
                                   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) != FALSE;
         if (!StartServiceW(s, 0, nullptr) && GetLastError() != ERROR_SERVICE_ALREADY_RUNNING) {
+            // serviços "manual/trigger" podem recusar início direto; ficam apenas reabilitados
         }
         SaveAppDword(SvcKey(i).c_str(), 0);
     }
@@ -264,6 +370,9 @@ bool ServiceSet(int i, bool enable) {
     return ok;
 }
 
+// ============================================================
+//  Display
+// ============================================================
 DisplaySettings g_disp = {50, 6500, 100};
 
 void DisplayLoad() {
@@ -281,6 +390,7 @@ void DisplaySave() {
 }
 bool DisplayIsNeutral() { return g_disp.saturation == 50 && g_disp.temperature == 6500 && g_disp.gamma100 == 100; }
 
+// Cor do corpo negro (aprox. Tanner Helland), normalizada para 6500K = branco
 static void Kelvin(float k, float& r, float& g, float& b) {
     float t = k / 100.f;
     if (t <= 66) { r = 255; g = 99.4708025861f * logf(t) - 161.1195681661f; }
@@ -309,6 +419,7 @@ static bool SetGammaAll(const WORD (*ramp)[256]) {
     return any;
 }
 
+// --- Saturação via Magnification API (efeito de cor em tela cheia, dura enquanto o app estiver aberto)
 struct MagColorEffect { float transform[5][5]; };
 typedef BOOL (WINAPI* MagInit_t)();
 typedef BOOL (WINAPI* MagUninit_t)();
@@ -317,7 +428,7 @@ static HMODULE s_mag = nullptr;
 static bool s_magOn = false;
 
 static bool ApplySaturation(int sat) {
-    float s = sat / 50.f;
+    float s = sat / 50.f;   // 1.0 = neutro
     if (!s_mag) s_mag = LoadLibraryW(L"Magnification.dll");
     if (!s_mag) return false;
     auto init = (MagInit_t)(void*)GetProcAddress(s_mag, "MagInitialize");
@@ -348,6 +459,7 @@ static bool ApplySaturation(int sat) {
 }
 
 bool DisplayApply() {
+    // Libera a faixa completa do gamma ramp (o Windows limita ajustes fortes por padrão)
     HKEY k;
     if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ICM", 0, nullptr, 0,
                         KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &k, nullptr) == ERROR_SUCCESS) {
@@ -360,7 +472,7 @@ bool DisplayApply() {
     Kelvin(6500.f, nr, ng, nb);
     float mul[3] = {kr / nr, kg / ng, kb / nb};
     float mx = (std::max)(mul[0], (std::max)(mul[1], mul[2]));
-    for (float& m : mul) m /= mx;
+    for (float& m : mul) m /= mx;  // nunca passa de 1.0
     float inv = 100.f / g_disp.gamma100;
     static WORD ramp[3][256];
     for (int i = 0; i < 256; ++i) {

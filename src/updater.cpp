@@ -1,3 +1,4 @@
+// Auto-update via GitHub Releases (WinHTTP, sem dependências externas)
 #include "updater.h"
 #include <winhttp.h>
 #include <vector>
@@ -18,6 +19,7 @@ static std::wstring ExePath() {
     return std::wstring(buf, n);
 }
 
+// GET simples via HTTPS. Segue redirecionamentos (o download das releases redireciona para o CDN do GitHub).
 static bool HttpGet(const std::wstring& url, std::string& body, size_t maxBytes) {
     URL_COMPONENTS uc{};
     uc.dwStructSize = sizeof uc;
@@ -67,6 +69,7 @@ static bool HttpGet(const std::wstring& url, std::string& body, size_t maxBytes)
     return ok;
 }
 
+// Lê o valor string de uma chave JSON a partir de 'from' (parser mínimo, suficiente para a API do GitHub)
 static bool JsonString(const std::string& js, const char* key, size_t from, std::string& out, size_t* pos = nullptr) {
     std::string k = std::string("\"") + key + "\"";
     size_t p = js.find(k, from);
@@ -113,6 +116,7 @@ bool CheckForUpdate(UpdateInfo& out) {
     std::wstring wtag(tag.begin(), tag.end());
     if (!IsNewer(wtag, AppVersion())) return false;
 
+    // procura o asset PrecisionFix.exe
     size_t pos = 0;
     std::string url;
     while (JsonString(js, "browser_download_url", pos, url, &pos)) {
@@ -128,6 +132,7 @@ bool CheckForUpdate(UpdateInfo& out) {
 bool DownloadUpdate(const UpdateInfo& info, std::wstring& newPath) {
     std::string data;
     if (!HttpGet(info.url, data, 64 * 1024 * 1024)) return false;
+    // valida: precisa ser um executável Windows de tamanho razoável
     if (data.size() < 100 * 1024 || data[0] != 'M' || data[1] != 'Z') return false;
     newPath = ExePath() + L".new";
     HANDLE f = CreateFileW(newPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -143,9 +148,10 @@ bool InstallUpdateAndRestart(const std::wstring& newPath) {
     std::wstring exe = ExePath();
     std::wstring old = exe + L".old";
     DeleteFileW(old.c_str());
+    // o Windows permite renomear um .exe em execução — então: atual -> .old, novo -> atual
     if (!MoveFileExW(exe.c_str(), old.c_str(), MOVEFILE_REPLACE_EXISTING)) return false;
     if (!MoveFileExW(newPath.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        MoveFileExW(old.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING);
+        MoveFileExW(old.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING);   // desfaz
         return false;
     }
     std::wstring cmd = L"\"" + exe + L"\" --updated";
@@ -166,7 +172,7 @@ void CleanupOldVersion() {
     std::wstring old = ExePath() + L".old";
     for (int i = 0; i < 10 && GetFileAttributesW(old.c_str()) != INVALID_FILE_ATTRIBUTES; ++i) {
         if (DeleteFileW(old.c_str())) break;
-        Sleep(300);
+        Sleep(300);   // a versão anterior ainda pode estar fechando
     }
     DeleteFileW((ExePath() + L".new").c_str());
 }
