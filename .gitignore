@@ -1,0 +1,7 @@
+# Saídas de build
+build/
+*.exe
+*.o
+*.res
+*.new
+*.old

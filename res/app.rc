@@ -1,0 +1,48 @@
+#include <windows.h>
+
+// Versão passada pelo build (build.sh / build.bat): -DVER_MAJOR=1 -DVER_MINOR=0 -DVER_PATCH=N
+#ifndef VER_MAJOR
+#define VER_MAJOR 1
+#endif
+#ifndef VER_MINOR
+#define VER_MINOR 0
+#endif
+#ifndef VER_PATCH
+#define VER_PATCH 0
+#endif
+#define STR2(x) #x
+#define STR(x) STR2(x)
+#define VER_STRING STR(VER_MAJOR.VER_MINOR.VER_PATCH)
+
+1 RT_MANIFEST "app.manifest"
+1 ICON "app.ico"
+
+// Fonte Inter (SIL Open Font License, ver res/fonts/OFL.txt) embutida
+101 RCDATA "fonts/inter-400.ttf"
+102 RCDATA "fonts/inter-500.ttf"
+103 RCDATA "fonts/inter-600.ttf"
+104 RCDATA "fonts/inter-700.ttf"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION VER_MAJOR,VER_MINOR,VER_PATCH,0
+PRODUCTVERSION VER_MAJOR,VER_MINOR,VER_PATCH,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041604B0"
+    BEGIN
+      VALUE "CompanyName", "CodeLabs"
+      VALUE "FileDescription", "Precision Fix"
+      VALUE "ProductName", "Precision Fix"
+      VALUE "LegalCopyright", "Desenvolvido por CodeLabs - usecodelabs.com"
+      VALUE "FileVersion", VER_STRING
+      VALUE "ProductVersion", VER_STRING
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0416, 1200
+  END
+END
