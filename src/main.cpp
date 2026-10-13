@@ -119,6 +119,10 @@ static void InstallPendingUpdate();
 static bool g_rebootPending = false;
 static bool g_updChecking = false;
 static std::wstring g_updPendingPath;
+static bool g_updBlock = false;
+static float g_updA = 0, g_updSpin = 0;
+static std::wstring g_updVer;
+static volatile LONG g_updProgress = 0;
 static std::vector<int> g_svcState;
 static int g_drag = -1;
 static ULONGLONG g_lastDispApply = 0;
@@ -301,7 +305,7 @@ static void AddHit(int id, RectF r, bool click) {
     g_hits.push_back({id, r, click});
 }
 static bool MouseIn(int id) {
-    if (g_mx < 0) return false;
+    if (g_mx < 0 || g_updBlock) return false;
     if (g_modal && !IsModalId(id)) return false;
     for (auto& h : g_hits)
         if (h.id == id && h.r.Contains(g_mx, g_my)) return true;
@@ -313,7 +317,7 @@ static float Hov(int id) {
     return it->second;
 }
 static int TopClick() {
-    if (g_mx < 0) return 0;
+    if (g_mx < 0 || g_updBlock) return 0;
     for (int i = (int)g_hits.size() - 1; i >= 0; --i) {
         const Hit& h = g_hits[i];
         if (!h.click || (g_modal && !IsModalId(h.id))) continue;
@@ -1367,6 +1371,33 @@ static void DrawModal(Graphics& g) {
     }
 }
 
+static void DrawUpdateScreen(Graphics& g) {
+    if (g_updA < 0.01f) return;
+    float a = g_updA;
+    SolidBrush bg(Color((BYTE)(255 * a), 6, 6, 8));
+    g.FillRectangle(&bg, 0.f, 0.f, W, H);
+    float cx = W / 2, cy = H / 2 - 40;
+    Pen track(Alpha(Color(255, 39, 39, 42), a), 4.f);
+    g.DrawEllipse(&track, cx - 26, cy - 26, 52.f, 52.f);
+    Pen arc(Alpha(Acc(), a), 4.f);
+    arc.SetStartCap(LineCapRound);
+    arc.SetEndCap(LineCapRound);
+    g.DrawArc(&arc, cx - 26, cy - 26, 52.f, 52.f, g_updSpin, 90.f);
+    const wchar_t* title = L"Atualizando o Precision Fix";
+    Text(g, title, fModalT, Alpha(cText, a), cx - TextW(g, title, fModalT) / 2, cy + 50);
+    LONG pr = g_updProgress;
+    std::wstring sub = g_updPendingPath.empty()
+        ? L"Baixando a versão " + g_updVer + L"  ·  " + std::to_wstring(pr) + L"%"
+        : L"Instalando a versão " + g_updVer + L"...";
+    Text(g, sub, fDesc, Alpha(cSub, a), cx - TextW(g, sub, fDesc) / 2, cy + 86);
+    RectF bar(cx - 160, cy + 122, 320, 6);
+    FillRound(g, bar, 3, Alpha(Color(255, 39, 39, 42), a));
+    float f = g_updPendingPath.empty() ? pr / 100.f : 1.f;
+    if (f > 0.01f) FillRound(g, RectF(bar.X, bar.Y, bar.Width * f, bar.Height), 3, Alpha(Acc(), a));
+    const wchar_t* note = L"Aguarde, o app reinicia sozinho quando terminar.";
+    Text(g, note, fSmall, Alpha(cMuted, a), cx - TextW(g, note, fSmall) / 2, cy + 150);
+}
+
 static HDC g_bufDC = nullptr, g_bgDC = nullptr;
 static HBITMAP g_bufBmp = nullptr, g_bgBmp = nullptr;
 static int g_bufW = 0, g_bufH = 0;
@@ -1500,6 +1531,7 @@ static void Paint(HDC hdc, int pw, int ph) {
 
         DrawToast(g);
         DrawModal(g);
+        DrawUpdateScreen(g);
     }
     BitBlt(hdc, 0, 0, pw, ph, mem, 0, 0, SRCCOPY);
 }
@@ -1648,7 +1680,7 @@ static void OnJobDone(Job* j, bool ok) {
     Toast(msg, ok ? 1 : 2);
     if (ok && (j->kind == JOB_ALL_REFS || j->kind == JOB_REVERT)) g_modal = g_modalShown = MODAL_REBOOT;
     delete j;
-    if (!g_updPendingPath.empty() && !g_modal) InstallPendingUpdate();
+    if (!g_updPendingPath.empty() && (g_updBlock || !g_modal)) InstallPendingUpdate();
 }
 
 static void ApplyDisplayNow() {
@@ -1747,7 +1779,7 @@ static DWORD WINAPI UpdateThread(LPVOID manual) {
     }
     PostMessageW(g_hwnd, WM_APP_UPD_FOUND, (WPARAM) new std::wstring(info.version), 0);
     std::wstring path;
-    if (DownloadUpdate(info, path)) PostMessageW(g_hwnd, WM_APP_UPD_READY, (WPARAM) new std::wstring(path), 0);
+    if (DownloadUpdate(info, path, &g_updProgress)) PostMessageW(g_hwnd, WM_APP_UPD_READY, (WPARAM) new std::wstring(path), 0);
     else PostMessageW(g_hwnd, WM_APP_UPD_NONE, 1, (LPARAM)1);
     return 0;
 }
@@ -1770,6 +1802,8 @@ static void InstallPendingUpdate() {
         DestroyWindow(g_hwnd);
     } else {
         if (!DisplayIsNeutral()) DisplayAgentNotify();
+        g_updBlock = false;
+        StartAnim();
         g_mutex = CreateMutexW(nullptr, TRUE, L"PrecisionFix.SingleInstance");
         Toast(L"Não foi possível instalar a atualização", 2);
     }
@@ -1956,6 +1990,8 @@ static bool TickAnim() {
     if (toastOn) moving = true;
     approach(g_modalA, g_modal ? 1.f : 0.f, 0.25f);
     if (g_busy) { g_pulse += 0.15f; moving = true; }
+    approach(g_updA, g_updBlock ? 1.f : 0.f, 0.2f);
+    if (g_updBlock) { g_updSpin = fmodf(g_updSpin + 6.f, 360.f); moving = true; }
     return moving;
 }
 
@@ -1965,6 +2001,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         POINT pt = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
         float x = pt.x / g_scale, y = pt.y / g_scale;
+        if (g_updBlock) return HTCAPTION;
         if (y < TOP_H - 6 && !g_modal) {
             for (auto& h : g_hits)
                 if (h.click && h.r.Contains(x, y)) return HTCLIENT;
@@ -2041,10 +2078,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         break;
     case WM_KEYDOWN:
+        if (g_updBlock) return 0;
         if (wp == VK_ESCAPE && g_modal) { g_modal = MODAL_NONE; StartAnim(); }
         return 0;
     case WM_MOUSEWHEEL:
-        if (!g_modal) {
+        if (!g_modal && !g_updBlock) {
             float maxs = (std::max)(0.f, g_contentH[g_page] - VIEW_H);
             g_scrollT[g_page] = Clampf(g_scrollT[g_page] - GET_WHEEL_DELTA_WPARAM(wp) / 120.f * 80.f, 0, maxs);
             StartAnim();
@@ -2062,9 +2100,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_APP_UPD_FOUND: {
         std::wstring* v = (std::wstring*)wp;
-        Toast(L"Nova versão " + *v + L" encontrada · baixando...", 3);
-        g_toastUntil = ~0ULL;
+        g_updVer = *v;
+        g_updProgress = 0;
+        g_updBlock = true;
+        g_modal = MODAL_NONE;
+        g_drag = -1;
+        if (GetCapture() == hwnd) ReleaseCapture();
         delete v;
+        StartAnim();
         return 0;
     }
     case WM_APP_UPD_READY: {
@@ -2072,12 +2115,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_updPendingPath = *p;
         delete p;
         g_updChecking = false;
-        Toast(L"Atualização baixada · reiniciando o app...", 1);
-        if (!g_busy && !g_modal) InstallPendingUpdate();
+        StartAnim();
+        if (!g_busy) InstallPendingUpdate();
         return 0;
     }
     case WM_APP_UPD_NONE:
         g_updChecking = false;
+        g_updBlock = false;
         if (lp) Toast(wp ? L"Não foi possível verificar/baixar a atualização" : L"Você já está na versão mais recente", wp ? 2 : 1);
         StartAnim();
         return 0;

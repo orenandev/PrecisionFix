@@ -18,7 +18,7 @@ static std::wstring ExePath() {
     return std::wstring(buf, n);
 }
 
-static bool HttpGet(const std::wstring& url, std::string& body, size_t maxBytes) {
+static bool HttpGet(const std::wstring& url, std::string& body, size_t maxBytes, bool api, volatile LONG* progress = nullptr) {
     URL_COMPONENTS uc{};
     uc.dwStructSize = sizeof uc;
     wchar_t host[256] = {}, path[2048] = {};
@@ -39,11 +39,15 @@ static bool HttpGet(const std::wstring& url, std::string& body, size_t maxBytes)
         HINTERNET r = WinHttpOpenRequest(c, L"GET", path, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                          uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
         if (r) {
-            const wchar_t* hdr = L"Accept: application/vnd.github+json\r\n";
+            const wchar_t* hdr = api ? L"Accept: application/vnd.github+json\r\n" : L"Accept: application/octet-stream\r\n";
             if (WinHttpSendRequest(r, hdr, (DWORD)-1L, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) && WinHttpReceiveResponse(r, nullptr)) {
                 DWORD status = 0, sz = sizeof status;
                 WinHttpQueryHeaders(r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
                                     &status, &sz, WINHTTP_NO_HEADER_INDEX);
+                DWORD total = 0;
+                sz = sizeof total;
+                if (progress && !WinHttpQueryHeaders(r, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                                                     &total, &sz, WINHTTP_NO_HEADER_INDEX)) total = 0;
                 if (status == 200) {
                     ok = true;
                     for (;;) {
@@ -56,6 +60,7 @@ static bool HttpGet(const std::wstring& url, std::string& body, size_t maxBytes)
                         DWORD read = 0;
                         if (!WinHttpReadData(r, &body[old], avail, &read)) { ok = false; break; }
                         body.resize(old + read);
+                        if (progress && total) InterlockedExchange(progress, (LONG)(body.size() * 100 / total));
                     }
                 }
             }
@@ -107,7 +112,7 @@ static bool IsNewer(const std::wstring& remote, const std::wstring& local) {
 bool CheckForUpdate(UpdateInfo& out) {
     std::wstring api = std::wstring(L"https://api.github.com/repos/") + kRepoOwner + L"/" + kRepoName + L"/releases/latest";
     std::string js;
-    if (!HttpGet(api, js, 2 * 1024 * 1024)) return false;
+    if (!HttpGet(api, js, 2 * 1024 * 1024, true)) return false;
     std::string tag;
     if (!JsonString(js, "tag_name", 0, tag)) return false;
     std::wstring wtag(tag.begin(), tag.end());
@@ -125,9 +130,9 @@ bool CheckForUpdate(UpdateInfo& out) {
     return false;
 }
 
-bool DownloadUpdate(const UpdateInfo& info, std::wstring& newPath) {
+bool DownloadUpdate(const UpdateInfo& info, std::wstring& newPath, volatile LONG* progress) {
     std::string data;
-    if (!HttpGet(info.url, data, 64 * 1024 * 1024)) return false;
+    if (!HttpGet(info.url, data, 64 * 1024 * 1024, false, progress)) return false;
     if (data.size() < 100 * 1024 || data[0] != 'M' || data[1] != 'Z') return false;
     newPath = ExePath() + L".new";
     HANDLE f = CreateFileW(newPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);

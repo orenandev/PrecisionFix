@@ -13,6 +13,6 @@ struct UpdateInfo {
 
 std::wstring AppVersion();
 bool CheckForUpdate(UpdateInfo& out);
-bool DownloadUpdate(const UpdateInfo& info, std::wstring& newPath);
+bool DownloadUpdate(const UpdateInfo& info, std::wstring& newPath, volatile LONG* progress = nullptr);
 bool InstallUpdateAndRestart(const std::wstring& newPath);
 void CleanupOldVersion();
