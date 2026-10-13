@@ -8,7 +8,6 @@ Mouse 1:1, teclado sem atraso, timer de 0.5 ms, prioridade para o jogo, teste de
 
 [![Download](https://img.shields.io/github/v/release/orenandev/PrecisionFix?label=download&style=for-the-badge&color=fafafa&labelColor=18181b)](https://github.com/orenandev/PrecisionFix/releases/latest/download/PrecisionFix.exe)
 [![Downloads](https://img.shields.io/github/downloads/orenandev/PrecisionFix/total?style=for-the-badge&color=fafafa&labelColor=18181b)](https://github.com/orenandev/PrecisionFix/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/orenandev/PrecisionFix/release.yml?style=for-the-badge&labelColor=18181b&label=build)](https://github.com/orenandev/PrecisionFix/actions)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-fafafa?style=for-the-badge&labelColor=18181b)
 
 <img src="docs/mouse.png" alt="Precision Fix" width="860">
@@ -78,7 +77,7 @@ Perfil de precisão (`KeyboardDataQueueSize`), Filter Keys off, atraso de repeti
 ## Segurança
 
 - **Código aberto:** tudo que o app faz está em [`src/`](src). As alterações são em registro, `bcdedit`, `powercfg`, serviços e configurações do Windows. O app não lê nem altera a memória do jogo.
-- **Compilado pelo GitHub:** cada `.exe` das [Releases](https://github.com/orenandev/PrecisionFix/releases) é gerado automaticamente pelo GitHub Actions a partir deste código, e o **SHA256** vai publicado nas notas da versão.
+- **Verificável:** o **SHA256** de cada `.exe` das [Releases](https://github.com/orenandev/PrecisionFix/releases) vai publicado nas notas da versão.
 - **Antivírus:** por pedir administrador e mexer em configurações do sistema, alguns antivírus com detecção por "machine learning" (ex.: `ML.Attribute.HighConfidence`) podem dar **falso positivo**. São detecções heurísticas, não assinaturas de vírus. Se tiver dúvida, confira o código ou compile você mesmo.
 
 ---
@@ -96,9 +95,6 @@ build_msvc.bat 1.0.0
 ```
 
 O resultado é o `PrecisionFix.exe` na raiz do projeto.
-
-### Releases automáticas
-Cada push na `main` dispara o workflow [`release.yml`](.github/workflows/release.yml), que compila e publica a versão `v1.0.<número do build>`. Os apps já instalados se atualizam sozinhos ao abrir. Commits que mexem só em `README`/`docs` não geram versão nova.
 
 ---
 
