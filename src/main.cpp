@@ -17,6 +17,7 @@
 using namespace Gdiplus;
 
 static const wchar_t* kSiteUrl = L"https://usecodelabs.com/";
+static const wchar_t* kRepoUrl = L"https://github.com/orenandev/PrecisionFix";
 
 static const float W = 1040, H = 700;
 static const float TOP_H = 58, SIDE_W = 236;
@@ -441,6 +442,76 @@ static void CodeLabsMark(Graphics& g, float x, float y, float s, const Color& c)
     g.FillPolygon(&b, rp, 6);
 }
 
+static void GitHubMark(Graphics& g, float x, float y, float size, const Color& c) {
+    static const char* d =
+        "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94"
+        "-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07"
+        "-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27"
+        ".68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95"
+        ".29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z";
+    float k = size / 16.f;
+    GraphicsPath p(FillModeAlternate);
+    const char* s = d;
+    char cmd = 0;
+    float cx = 0, cy = 0, sx = 0, sy = 0;
+    auto skip = [&] { while (*s == ' ' || *s == ',') ++s; };
+    auto num = [&]() { skip(); char* e; float v = strtof(s, &e); s = e; return v; };
+    auto flag = [&]() { skip(); return *s++ - '0'; };
+    auto P = [&](float px, float py) { return PointF(x + px * k, y + py * k); };
+    for (;;) {
+        skip();
+        if (!*s) break;
+        if (isalpha((unsigned char)*s)) cmd = *s++;
+        bool rel = islower((unsigned char)cmd) != 0;
+        float ox = rel ? cx : 0, oy = rel ? cy : 0;
+        switch (tolower((unsigned char)cmd)) {
+        case 'm': {
+            float nx = num() + ox, ny = num() + oy;
+            p.StartFigure();
+            cx = sx = nx; cy = sy = ny;
+            cmd = rel ? 'l' : 'L';
+            break;
+        }
+        case 'l': {
+            float nx = num() + ox, ny = num() + oy;
+            p.AddLine(P(cx, cy), P(nx, ny));
+            cx = nx; cy = ny;
+            break;
+        }
+        case 'c': {
+            float x1 = num() + ox, y1 = num() + oy, x2 = num() + ox, y2 = num() + oy, nx = num() + ox, ny = num() + oy;
+            p.AddBezier(P(cx, cy), P(x1, y1), P(x2, y2), P(nx, ny));
+            cx = nx; cy = ny;
+            break;
+        }
+        case 'a': {
+            float r = num();
+            num(); num();
+            int la = flag(), sw = flag();
+            float nx = num() + ox, ny = num() + oy;
+            float hx = (cx - nx) / 2, hy = (cy - ny) / 2, d2 = hx * hx + hy * hy;
+            if (r * r < d2) r = sqrtf(d2);
+            float co = sqrtf((std::max)(0.f, (r * r - d2) / d2)) * (la != sw ? 1.f : -1.f);
+            float ccx = co * hy + (cx + nx) / 2, ccy = -co * hx + (cy + ny) / 2;
+            float t1 = atan2f(cy - ccy, cx - ccx), dt = atan2f(ny - ccy, nx - ccx) - t1;
+            if (!sw && dt > 0) dt -= 6.2831853f;
+            if (sw && dt < 0) dt += 6.2831853f;
+            p.AddArc(x + (ccx - r) * k, y + (ccy - r) * k, 2 * r * k, 2 * r * k, t1 * 57.29578f, dt * 57.29578f);
+            cx = nx; cy = ny;
+            break;
+        }
+        case 'z':
+            p.CloseFigure();
+            cx = sx; cy = sy;
+            break;
+        default:
+            return;
+        }
+    }
+    SolidBrush b(c);
+    g.FillPath(&b, &p);
+}
+
 struct Ref { int src; int idx; const wchar_t* label; };
 static std::vector<Ref> g_mouseRefs, g_kbdRefs;
 
@@ -669,9 +740,9 @@ static void DrawChrome(Graphics& g) {
     float ch = Hov(ID_SITE_SIDE);
     FillRound(g, cr, 14, Mix(Color(255, 14, 14, 16), Color(255, 22, 22, 25), ch));
     StrokeRound(g, cr, 14, Mix(cBorder, Color(255, 70, 70, 78), ch));
-    CodeLabsMark(g, cr.X + 16, cr.Y + 25, 0.95f, cText);
-    Text(g, L"Desenvolvido por", fSmall, cMuted, cr.X + 50, cr.Y + 14);
-    Text(g, L"CodeLabs", fRow, cText, cr.X + 50, cr.Y + 31);
+    GitHubMark(g, cr.X + 17, cr.Y + 22, 22.f, cText);
+    Text(g, L"Código aberto", fSmall, cMuted, cr.X + 52, cr.Y + 14);
+    Text(g, L"GitHub", fRow, cText, cr.X + 52, cr.Y + 31);
     Arrow(g, cr.X + cr.Width - 30, cr.Y + cr.Height / 2, Mix(cMuted, cText, ch));
 
     struct { int id; float x; Color c; } dots[] = {
@@ -1556,8 +1627,8 @@ static void OnJobDone(Job* j, bool ok) {
         msg = L"Padrões do Windows restaurados";
         reboot = true;
         g_disp = {50, 6500, 100};
-        DisplayApply();
         DisplaySave();
+        if (!DisplayAgentNotify()) DisplayApply();
         RefreshServices();
         break;
     case JOB_SVC:
@@ -1580,14 +1651,14 @@ static void OnJobDone(Job* j, bool ok) {
     if (!g_updPendingPath.empty() && !g_modal) InstallPendingUpdate();
 }
 
-static void ApplyDisplayNow(bool save) {
-    DisplayApply();
+static void ApplyDisplayNow() {
+    DisplaySave();
+    if (!DisplayAgentNotify()) DisplayApply();
     g_lastDispApply = GetTickCount64();
-    if (save) DisplaySave();
 }
 
 static void SliderChanged(int k, bool final) {
-    if (final || GetTickCount64() - g_lastDispApply > 40) ApplyDisplayNow(final);
+    if (final || GetTickCount64() - g_lastDispApply > 40) ApplyDisplayNow();
     StartAnim();
 }
 
@@ -1694,9 +1765,11 @@ static void InstallPendingUpdate() {
     std::wstring path = g_updPendingPath;
     g_updPendingPath.clear();
     if (g_mutex) { CloseHandle(g_mutex); g_mutex = nullptr; }
+    DisplayAgentQuit();
     if (InstallUpdateAndRestart(path)) {
         DestroyWindow(g_hwnd);
     } else {
+        if (!DisplayIsNeutral()) DisplayAgentNotify();
         g_mutex = CreateMutexW(nullptr, TRUE, L"PrecisionFix.SingleInstance");
         Toast(L"Não foi possível instalar a atualização", 2);
     }
@@ -1733,7 +1806,11 @@ static void OnClick(int id) {
         return;
     }
     if (id == ID_RESET_COLOR) { SetTheme(0); Toast(L"Cores originais restauradas", 1); return; }
-    if (id == ID_SITE || id == ID_SITE_SIDE || id == ID_SITE_BADGE) {
+    if (id == ID_SITE_SIDE) {
+        ShellExecuteW(nullptr, L"open", L"explorer.exe", kRepoUrl, nullptr, SW_SHOWNORMAL);
+        return;
+    }
+    if (id == ID_SITE || id == ID_SITE_BADGE) {
         ShellExecuteW(nullptr, L"open", L"explorer.exe", kSiteUrl, nullptr, SW_SHOWNORMAL);
         return;
     }
@@ -1772,7 +1849,7 @@ static void OnClick(int id) {
     if (id >= ID_PRESET && id < ID_PRESET + kPresetCount) {
         const Preset& p = kPresets[id - ID_PRESET];
         g_disp = {p.sat, p.temp, p.gam};
-        ApplyDisplayNow(true);
+        ApplyDisplayNow();
         Toast(std::wstring(L"Preset ") + p.name + L" aplicado", 1);
         return;
     }
@@ -2055,6 +2132,10 @@ static void InitState() {
 
 #ifndef PF_NO_WINMAIN
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
+    if (wcsstr(GetCommandLineW(), L"--display")) {
+        DisplayAgentRun();
+        return 0;
+    }
     bool justUpdated = wcsstr(GetCommandLineW(), L"--updated") != nullptr;
     if (justUpdated) Sleep(800);
     CleanupOldVersion();
@@ -2109,7 +2190,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     ShowWindow(g_hwnd, nShow);
     UpdateWindow(g_hwnd);
 
-    if (!DisplayIsNeutral()) DisplayApply();
+    if (!DisplayIsNeutral() && !DisplayAgentNotify()) DisplayApply();
     UpdateBoostTimer();
 
     if (justUpdated) Toast(L"Precision Fix atualizado para a versão " + AppVersion(), 1);

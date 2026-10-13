@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cwchar>
 #include <algorithm>
+#include <cstring>
 
 static bool FileExists(const std::wstring& p) {
     DWORD a = GetFileAttributesW(p.c_str());
@@ -316,6 +317,9 @@ typedef BOOL (WINAPI* MagSetColor_t)(MagColorEffect*);
 static HMODULE s_mag = nullptr;
 static bool s_magOn = false;
 
+static MagColorEffect s_magEff{};
+static WORD s_ramp[3][256];
+
 static bool ApplySaturation(int sat) {
     float s = sat / 50.f;
     if (!s_mag) s_mag = LoadLibraryW(L"Magnification.dll");
@@ -344,7 +348,25 @@ static bool ApplySaturation(int sat) {
             e.transform[i][j] = (1 - s) * w[i] + (i == j ? s : 0);
     e.transform[3][3] = 1;
     e.transform[4][4] = 1;
+    s_magEff = e;
     return setc(&e) != FALSE;
+}
+
+static void BuildRamp() {
+    float kr, kg, kb, nr, ng, nb;
+    Kelvin((float)g_disp.temperature, kr, kg, kb);
+    Kelvin(6500.f, nr, ng, nb);
+    float mul[3] = {kr / nr, kg / ng, kb / nb};
+    float mx = (std::max)(mul[0], (std::max)(mul[1], mul[2]));
+    for (float& m : mul) m /= mx;
+    float inv = 100.f / g_disp.gamma100;
+    for (int i = 0; i < 256; ++i) {
+        float v = powf(i / 255.f, inv);
+        for (int c = 0; c < 3; ++c) {
+            float o = v * mul[c] * 65535.f;
+            s_ramp[c][i] = (WORD)(o < 0 ? 0 : (o > 65535 ? 65535 : o));
+        }
+    }
 }
 
 bool DisplayApply() {
@@ -355,24 +377,127 @@ bool DisplayApply() {
         RegSetValueExW(k, L"GdiIcmGammaRange", 0, REG_DWORD, (const BYTE*)&v, sizeof v);
         RegCloseKey(k);
     }
-    float kr, kg, kb, nr, ng, nb;
-    Kelvin((float)g_disp.temperature, kr, kg, kb);
-    Kelvin(6500.f, nr, ng, nb);
-    float mul[3] = {kr / nr, kg / ng, kb / nb};
-    float mx = (std::max)(mul[0], (std::max)(mul[1], mul[2]));
-    for (float& m : mul) m /= mx;
-    float inv = 100.f / g_disp.gamma100;
-    static WORD ramp[3][256];
-    for (int i = 0; i < 256; ++i) {
-        float v = powf(i / 255.f, inv);
-        for (int c = 0; c < 3; ++c) {
-            float o = v * mul[c] * 65535.f;
-            ramp[c][i] = (WORD)(o < 0 ? 0 : (o > 65535 ? 65535 : o));
-        }
-    }
-    bool ok = SetGammaAll(ramp);
+    BuildRamp();
+    bool ok = SetGammaAll(s_ramp);
     ok &= ApplySaturation(g_disp.saturation);
     return ok;
+}
+
+static bool RampMatches() {
+    bool ok = true;
+    DISPLAY_DEVICEW dd{};
+    dd.cb = sizeof dd;
+    for (DWORD i = 0; ok && EnumDisplayDevicesW(nullptr, i, &dd, 0); ++i) {
+        if (dd.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) {
+            HDC dc = CreateDCW(nullptr, dd.DeviceName, nullptr, nullptr);
+            if (dc) {
+                static WORD cur[3][256];
+                if (GetDeviceGammaRamp(dc, cur))
+                    for (int c = 0; c < 3 && ok; ++c)
+                        for (int j = 0; j < 256; ++j)
+                            if (abs((int)cur[c][j] - (int)s_ramp[c][j]) > 600) { ok = false; break; }
+                DeleteDC(dc);
+            }
+        }
+        dd.cb = sizeof dd;
+    }
+    return ok;
+}
+
+static bool MagMatches() {
+    if (!s_magOn || !s_mag) return true;
+    auto getc = (MagSetColor_t)(void*)GetProcAddress(s_mag, "MagGetFullscreenColorEffect");
+    MagColorEffect cur{};
+    if (!getc || !getc(&cur)) return true;
+    for (int i = 0; i < 5; ++i)
+        for (int j = 0; j < 5; ++j)
+            if (fabsf(cur.transform[i][j] - s_magEff.transform[i][j]) > 0.01f) return false;
+    return true;
+}
+
+static const wchar_t* kAgentMutex = L"PrecisionFix.DisplayAgent";
+static const wchar_t* kAgentChange = L"PrecisionFix.DisplayChanged";
+static const wchar_t* kAgentQuit = L"PrecisionFix.DisplayQuit";
+
+static bool AgentRunning() {
+    HANDLE h = OpenMutexW(SYNCHRONIZE, FALSE, kAgentMutex);
+    if (!h) return false;
+    CloseHandle(h);
+    return true;
+}
+
+static bool LaunchAgent() {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring cmd = L"\"" + std::wstring(exe) + L"\" --display";
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(exe, &cmd[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
+static HANDLE ChangeEvent() {
+    static HANDLE h = CreateEventW(nullptr, FALSE, FALSE, kAgentChange);
+    return h;
+}
+
+void DisplayAgentRun() {
+    HANDLE mx = CreateMutexW(nullptr, TRUE, kAgentMutex);
+    if (!mx) return;
+    if (GetLastError() == ERROR_ALREADY_EXISTS) { CloseHandle(mx); return; }
+    HANDLE hs[2] = {CreateEventW(nullptr, FALSE, FALSE, kAgentQuit), ChangeEvent()};
+    SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+    DisplaySettings last{-1, -1, -1};
+    DWORD wait = 0;
+    for (;;) {
+        DWORD w = WaitForMultipleObjects(2, hs, FALSE, wait);
+        wait = 1000;
+        if (w == WAIT_OBJECT_0) break;
+        DisplayLoad();
+        if (DisplayIsNeutral()) {
+            DisplayApply();
+            DisplayShutdown();
+            break;
+        }
+        if (memcmp(&last, &g_disp, sizeof last) != 0) {
+            DisplayApply();
+            last = g_disp;
+        } else {
+            if (!RampMatches()) SetGammaAll(s_ramp);
+            if (!MagMatches()) ApplySaturation(g_disp.saturation);
+        }
+    }
+    for (HANDLE h : hs) if (h) CloseHandle(h);
+    ReleaseMutex(mx);
+    CloseHandle(mx);
+}
+
+bool DisplayAgentNotify() {
+    bool running = AgentRunning();
+    if (!running && !DisplayIsNeutral()) running = LaunchAgent();
+    if (!running) return false;
+    if (s_magOn) {
+        auto uninit = (MagUninit_t)(void*)GetProcAddress(s_mag, "MagUninitialize");
+        if (uninit) uninit();
+        s_magOn = false;
+    }
+    SetEvent(ChangeEvent());
+    return true;
+}
+
+void DisplayAgentQuit() {
+    HANDLE q = OpenEventW(EVENT_MODIFY_STATE, FALSE, kAgentQuit);
+    if (!q) return;
+    SetEvent(q);
+    CloseHandle(q);
+    HANDLE m = OpenMutexW(SYNCHRONIZE, FALSE, kAgentMutex);
+    if (!m) return;
+    DWORD r = WaitForSingleObject(m, 2000);
+    if (r == WAIT_OBJECT_0 || r == WAIT_ABANDONED) ReleaseMutex(m);
+    CloseHandle(m);
 }
 
 void DisplayShutdown() {

@@ -26,6 +26,9 @@ void DisplaySave();
 bool DisplayApply();
 void DisplayShutdown();
 bool DisplayIsNeutral();
+void DisplayAgentRun();
+bool DisplayAgentNotify();
+void DisplayAgentQuit();
 
 enum { TOOL_CACHE, TOOL_LOGS, TOOL_DNS, TOOL_TEMP, TOOL_FOLDER, TOOL_COUNT };
 bool FiveMTool(int tool, std::wstring& msg);

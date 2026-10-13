@@ -65,7 +65,7 @@ Perfil de precisão (`KeyboardDataQueueSize`), Filter Keys off, atraso de repeti
 ### Serviços, Display e Configurações
 - **Serviços:** mostra quais serviços do Windows estão ativos e permite reativar os que estiverem parados (os ativos ficam travados, sem opção de desativar).
 - **Configurações:** cor de destaque pronta ou qualquer cor pela paleta (clique no quadrado de cor).
-- **Display:** presets (Padrão, Vibrante, Cinema, FiveM Night, Competitivo) e ajuste fino de saturação, temperatura de cor e gama.
+- **Display:** presets (Padrão, Vibrante, Cinema, FiveM Night, Competitivo) e ajuste fino de saturação, temperatura de cor e gama. As cores continuam aplicadas com o app fechado e voltam sozinhas se o jogo resetar (use o FiveM em tela cheia sem bordas).
 
 <div align="center">
 <img src="docs/dashboard.png" width="420"> <img src="docs/teclado.png" width="420">
