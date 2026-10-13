@@ -1,5 +1,6 @@
 #include "updater.h"
 #include <winhttp.h>
+#include <wincrypt.h>
 #include <vector>
 #include <cwchar>
 #include <cstring>
@@ -109,23 +110,74 @@ static bool IsNewer(const std::wstring& remote, const std::wstring& local) {
     return false;
 }
 
+static std::string Sha256Hex(const void* data, size_t len) {
+    std::string hex;
+    HCRYPTPROV prov = 0;
+    HCRYPTHASH h = 0;
+    if (!CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return hex;
+    if (CryptCreateHash(prov, CALG_SHA_256, 0, 0, &h)) {
+        const BYTE* p = (const BYTE*)data;
+        bool ok = true;
+        while (len && ok) {
+            DWORD n = len > 0x40000000 ? 0x40000000 : (DWORD)len;
+            ok = CryptHashData(h, p, n, 0) != FALSE;
+            p += n;
+            len -= n;
+        }
+        BYTE out[32];
+        DWORD sz = sizeof out;
+        if (ok && CryptGetHashParam(h, HP_HASHVAL, out, &sz, 0)) {
+            static const char* d = "0123456789abcdef";
+            for (DWORD i = 0; i < sz; ++i) { hex += d[out[i] >> 4]; hex += d[out[i] & 15]; }
+        }
+        CryptDestroyHash(h);
+    }
+    CryptReleaseContext(prov, 0);
+    return hex;
+}
+
+static std::string FileSha256(const std::wstring& path) {
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return "";
+    std::string data;
+    LARGE_INTEGER size{};
+    if (GetFileSizeEx(f, &size) && size.QuadPart < 128 * 1024 * 1024) {
+        data.resize((size_t)size.QuadPart);
+        DWORD r = 0;
+        if (!ReadFile(f, &data[0], (DWORD)data.size(), &r, nullptr) || r != data.size()) data.clear();
+    }
+    CloseHandle(f);
+    return data.empty() ? "" : Sha256Hex(data.data(), data.size());
+}
+
 bool CheckForUpdate(UpdateInfo& out) {
     std::wstring api = std::wstring(L"https://api.github.com/repos/") + kRepoOwner + L"/" + kRepoName + L"/releases/latest";
     std::string js;
     if (!HttpGet(api, js, 2 * 1024 * 1024, true)) return false;
     std::string tag;
-    if (!JsonString(js, "tag_name", 0, tag)) return false;
+    JsonString(js, "tag_name", 0, tag);
     std::wstring wtag(tag.begin(), tag.end());
-    if (!IsNewer(wtag, AppVersion())) return false;
 
     size_t pos = 0;
-    std::string url;
-    while (JsonString(js, "browser_download_url", pos, url, &pos)) {
-        if (url.size() >= 16 && _stricmp(url.c_str() + url.size() - 16, "PrecisionFix.exe") == 0) {
-            out.url.assign(url.begin(), url.end());
-            out.version = (!wtag.empty() && (wtag[0] == L'v' || wtag[0] == L'V')) ? wtag.substr(1) : wtag;
-            return true;
+    std::string name;
+    while (JsonString(js, "name", pos, name, &pos)) {
+        if (_stricmp(name.c_str(), "PrecisionFix.exe") != 0) continue;
+        std::string url, digest;
+        size_t upos = pos;
+        if (!JsonString(js, "browser_download_url", pos, url, &upos)) return false;
+        size_t dpos = 0;
+        if (JsonString(js, "digest", pos, digest, &dpos) && dpos < upos && digest.compare(0, 7, "sha256:") == 0) {
+            digest.erase(0, 7);
+            for (char& c : digest) c = (char)tolower((unsigned char)c);
+            if (digest == FileSha256(ExePath())) return false;
+        } else {
+            digest.clear();
+            if (!IsNewer(wtag, AppVersion())) return false;
         }
+        out.url.assign(url.begin(), url.end());
+        out.version = (!wtag.empty() && (wtag[0] == L'v' || wtag[0] == L'V')) ? wtag.substr(1) : wtag;
+        out.sha256 = digest;
+        return true;
     }
     return false;
 }
@@ -134,6 +186,7 @@ bool DownloadUpdate(const UpdateInfo& info, std::wstring& newPath, volatile LONG
     std::string data;
     if (!HttpGet(info.url, data, 64 * 1024 * 1024, false, progress)) return false;
     if (data.size() < 100 * 1024 || data[0] != 'M' || data[1] != 'Z') return false;
+    if (!info.sha256.empty() && Sha256Hex(data.data(), data.size()) != info.sha256) return false;
     newPath = ExePath() + L".new";
     HANDLE f = CreateFileW(newPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return false;

@@ -9,6 +9,7 @@
 struct UpdateInfo {
     std::wstring version;
     std::wstring url;
+    std::string sha256;
 };
 
 std::wstring AppVersion();

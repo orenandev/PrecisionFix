@@ -1387,8 +1387,8 @@ static void DrawUpdateScreen(Graphics& g) {
     Text(g, title, fModalT, Alpha(cText, a), cx - TextW(g, title, fModalT) / 2, cy + 50);
     LONG pr = g_updProgress;
     std::wstring sub = g_updPendingPath.empty()
-        ? L"Baixando a versão " + g_updVer + L"  ·  " + std::to_wstring(pr) + L"%"
-        : L"Instalando a versão " + g_updVer + L"...";
+        ? L"Baixando a atualização  ·  " + std::to_wstring(pr) + L"%"
+        : L"Instalando a atualização...";
     Text(g, sub, fDesc, Alpha(cSub, a), cx - TextW(g, sub, fDesc) / 2, cy + 86);
     RectF bar(cx - 160, cy + 122, 320, 6);
     FillRound(g, bar, 3, Alpha(Color(255, 39, 39, 42), a));
@@ -2238,7 +2238,13 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int nShow) {
     UpdateBoostTimer();
 
     if (justUpdated) Toast(L"Precision Fix atualizado para a versão " + AppVersion(), 1);
-    StartUpdateCheck(false);
+    {
+        wchar_t dir[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, dir, MAX_PATH);
+        if (wchar_t* sl = wcsrchr(dir, L'\\')) *sl = 0;
+        std::wstring dev = std::wstring(dir) + L"\\src\\main.cpp";
+        if (GetFileAttributesW(dev.c_str()) == INVALID_FILE_ATTRIBUTES) StartUpdateCheck(false);
+    }
 
     if (LoadAppDword(L"FirstRunDone", 0) == 0) {
         SaveAppDword(L"FirstRunDone", 1);

@@ -77,7 +77,7 @@ Perfil de precisão (`KeyboardDataQueueSize`), Filter Keys off, atraso de repeti
 ## Segurança
 
 - **Código aberto:** tudo que o app faz está em [`src/`](src). As alterações são em registro, `bcdedit`, `powercfg`, serviços e configurações do Windows. O app não lê nem altera a memória do jogo.
-- **Verificável:** o **SHA256** de cada `.exe` das [Releases](https://github.com/orenandev/PrecisionFix/releases) vai publicado nas notas da versão.
+- **Verificável:** o GitHub mostra o **SHA256** do `.exe` na [release](https://github.com/orenandev/PrecisionFix/releases), e o app confere esse hash antes de instalar qualquer atualização.
 - **Antivírus:** por pedir administrador e mexer em configurações do sistema, alguns antivírus com detecção por "machine learning" (ex.: `ML.Attribute.HighConfidence`) podem dar **falso positivo**. São detecções heurísticas, não assinaturas de vírus. Se tiver dúvida, confira o código ou compile você mesmo.
 
 ---
